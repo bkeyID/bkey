@@ -5,9 +5,9 @@ Python SDK for BKey — biometric approval, vault, and checkout for AI agents.
 ## Installation
 
 ```bash
-pip install bkey              # Core (requests)
-pip install bkey[async]       # + httpx for async
-pip install bkey[all]         # Everything
+pip install bkey-sdk              # Core (requests)
+pip install bkey-sdk[async]       # + httpx for async
+pip install bkey-sdk[all]         # Everything
 ```
 
 ## Quick Start

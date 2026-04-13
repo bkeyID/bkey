@@ -16,9 +16,9 @@ npm install @bkey/cli -g # CLI tool
 ### Python
 
 ```bash
-pip install bkey          # Core client
-pip install bkey[async]   # + async support (httpx)
-pip install bkey[all]     # Everything
+pip install bkey-sdk          # Core client
+pip install bkey-sdk[async]   # + async support (httpx)
+pip install bkey-sdk[all]     # Everything
 ```
 
 ### Go (coming soon)
