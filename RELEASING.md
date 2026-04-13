@@ -69,6 +69,22 @@ These must be set in the repo's Settings → Secrets → Actions:
 | `NPM_TOKEN` | npm granular access token with publish to `@bkey/*` |
 | `PYPI_TOKEN` | PyPI API token scoped to `bkey-sdk` |
 
+## Manual publishing (if needed)
+
+Always use `pnpm publish` (not `npm publish`) for TypeScript packages. pnpm resolves `workspace:*` dependencies to actual version numbers. `npm publish` publishes the literal `workspace:*` string which breaks installs.
+
+```bash
+cd typescript
+pnpm --filter @bkey/sdk publish --access public --no-git-checks
+pnpm --filter @bkey/cli publish --access public --no-git-checks
+```
+
+For Python:
+```bash
+cd python
+uv build && uv publish --token YOUR_TOKEN
+```
+
 ## Rust releases
 
 Rust crate is published manually (no CI yet):
