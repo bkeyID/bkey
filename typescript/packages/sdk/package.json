@@ -1,0 +1,37 @@
+{
+  "name": "@bkey/sdk",
+  "version": "0.1.0",
+  "description": "BKey SDK — biometric approval, vault, and checkout for AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bkeyID/bkey.git",
+    "directory": "typescript/packages/sdk"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["bkey", "biometric", "ciba", "oauth", "vault", "checkout", "agent"]
+}

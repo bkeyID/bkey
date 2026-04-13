@@ -1,0 +1,100 @@
+---
+title: Quickstart
+description: Get up and running with BKey in 5 minutes.
+---
+
+# Quickstart
+
+## 1. Get Credentials
+
+Sign up at [bkey.id](https://bkey.id) and create an OAuth client from the developer dashboard.
+
+You'll receive:
+- `BKEY_CLIENT_ID` — your application's client ID
+- `BKEY_CLIENT_SECRET` — your application's client secret
+
+## 2. Install the SDK
+
+<CodeGroup>
+```bash TypeScript
+npm install @bkey/sdk
+```
+
+```bash Python
+pip install bkey
+```
+
+```bash CLI
+npm install -g @bkey/cli
+```
+</CodeGroup>
+
+## 3. Authenticate
+
+<CodeGroup>
+```typescript TypeScript
+import { BKeyClient } from '@bkey/sdk';
+
+const bkey = new BKeyClient({
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
+});
+```
+
+```python Python
+from bkey import BKeyClient
+
+client = BKeyClient(
+    client_id="your-client-id",
+    client_secret="your-client-secret",
+)
+```
+
+```bash CLI
+bkey auth login
+```
+</CodeGroup>
+
+## 4. Request an Approval
+
+<CodeGroup>
+```typescript TypeScript
+// Initiate a checkout
+const checkout = await bkey.checkoutRequest({
+  merchantName: 'Example Store',
+  items: [{ name: 'Widget', price: 9.99 }],
+  amount: 9.99,
+  currency: 'USD',
+});
+
+// Wait for user to approve on their phone
+const result = await bkey.pollCheckoutStatus(checkout.id);
+console.log(result.status); // 'approved'
+```
+
+```python Python
+checkout = client.checkout_request(
+    merchant_name="Example Store",
+    items=[{"name": "Widget", "price": 9.99}],
+    amount=9.99,
+    currency="USD",
+)
+
+result = client.checkout_poll(checkout.id)
+print(result.status)  # "approved"
+```
+
+```bash CLI
+bkey checkout request \
+  --merchant "Example Store" \
+  --amount 9.99 \
+  --currency USD
+```
+</CodeGroup>
+
+## Next Steps
+
+- [Authentication Overview](/authentication/overview) — understand the OAuth flows
+- [Agent Checkout Guide](/guides/agent-checkout) — build an agentic checkout
+- [Vault Secrets Guide](/guides/vault-secrets) — store and retrieve secrets
+- [API Reference](/api-reference/overview) — full endpoint documentation

@@ -1,0 +1,55 @@
+---
+title: Introduction
+description: BKey — biometric approval infrastructure for AI agents and developers.
+---
+
+<Warning>
+  BKey is in **active development**. APIs and SDKs may change without notice.
+</Warning>
+
+# BKey Developer Docs
+
+BKey provides biometric approval infrastructure so that AI agents can request human authorization before taking sensitive actions.
+
+## What is BKey?
+
+BKey is an **OAuth 2.1 + CIBA identity provider** that enables:
+
+- **Agents** to authenticate and request approvals via standard OAuth flows
+- **Humans** to approve actions with facial biometrics on their mobile device
+- **Developers** to integrate biometric approval into any application
+
+## Core Capabilities
+
+| Capability | Description |
+|-----------|-------------|
+| **Authentication** | OAuth 2.1 client credentials, device authorization, CIBA |
+| **Checkout** | Agent-initiated purchases with biometric approval |
+| **Vault** | Encrypted secret storage with biometric access control |
+| **Signing** | Document and transaction signing with biometric proof |
+
+## How It Works
+
+1. Your agent authenticates with BKey using **client credentials**
+2. Agent requests an action (checkout, vault access, signing)
+3. BKey sends a **CIBA push** to the user's mobile app
+4. User reviews and approves with **facial biometrics**
+5. Agent receives the approval and proceeds
+
+## SDKs
+
+Install the SDK for your language:
+
+<CodeGroup>
+```bash npm
+npm install @bkey/sdk
+```
+
+```bash pip
+pip install bkey
+```
+
+```bash go
+go get github.com/bkeyID/bkey/go
+```
+</CodeGroup>

@@ -1,0 +1,32 @@
+---
+title: CLI
+description: "@bkey/cli — command-line tool for BKey."
+---
+
+# BKey CLI
+
+## Installation
+
+```bash
+npm install -g @bkey/cli
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `bkey auth login` | Device auth flow (QR code) |
+| `bkey auth setup-agent` | Create OAuth client credentials |
+| `bkey auth status` | Show current auth status |
+| `bkey auth logout` | Revoke tokens |
+| `bkey vault store` | Encrypt and store a secret |
+| `bkey vault access` | Request access to a secret |
+| `bkey checkout request` | Initiate a checkout approval |
+| `bkey checkout status` | Poll checkout status |
+| `bkey approve` | Generic CIBA approval |
+| `bkey proxy` | Credential proxy for agents |
+| `bkey wrap` | Wrap commands with biometric auth |
+
+## Source
+
+[github.com/bkeyID/bkey/typescript/packages/cli](https://github.com/bkeyID/bkey/tree/main/typescript/packages/cli)

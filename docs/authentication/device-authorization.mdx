@@ -1,0 +1,29 @@
+---
+title: Device Authorization
+description: Human login via QR code — RFC 8628 device authorization flow.
+---
+
+# Device Authorization
+
+For human login from CLIs, terminals, and devices without a browser. The user scans a QR code on their phone to approve.
+
+## When to Use
+
+- CLI tools (`bkey auth login`)
+- IoT devices
+- SSH sessions
+
+## Flow
+
+1. Client requests a device code
+2. User scans QR code / opens URL on phone
+3. User approves on phone with biometrics
+4. Client polls for the token
+
+## CLI Usage
+
+```bash
+bkey auth login
+```
+
+This displays a QR code. Scan it with the BKey mobile app, approve with facial biometrics, and the CLI receives a session token.

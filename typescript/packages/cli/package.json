@@ -1,0 +1,42 @@
+{
+  "name": "@bkey/cli",
+  "version": "0.1.0",
+  "description": "BKey CLI — secure credential proxy and biometric approval for AI agents",
+  "type": "module",
+  "bin": {
+    "bkey": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "skill",
+    "README.md"
+  ],
+  "scripts": {
+    "prebuild": "bash scripts/gen-build-info.sh",
+    "build": "tsc",
+    "predev": "bash scripts/gen-build-info.sh",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@bkey/sdk": "workspace:*",
+    "@noble/curves": "^1.8.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/qrcode": "^1.5.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bkeyID/bkey.git",
+    "directory": "typescript/packages/cli"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["bkey", "cli", "biometric", "ciba", "oauth", "agent"]
+}

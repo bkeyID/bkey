@@ -1,0 +1,35 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+build/
+*.whl
+
+# Go
+/go/bin/
+
+# Rust
+/rust/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Claude Code
+.claude/
