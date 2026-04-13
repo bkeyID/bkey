@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bkey"
+name = "bkey-sdk"
 version = "0.1.0"
 description = "BKey SDK — biometric approval, vault, and checkout for AI agents"
 readme = "README.md"
@@ -35,7 +35,7 @@ dependencies = [
 async = ["httpx>=0.27.0"]
 mcp = ["mcp>=1.0.0"]
 fastapi = ["fastapi>=0.100.0"]
-all = ["bkey[async,mcp,fastapi]"]
+all = ["bkey-sdk[async,mcp,fastapi]"]
 
 [project.urls]
 Homepage = "https://bkey.id"
