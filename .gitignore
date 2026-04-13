@@ -9,6 +9,7 @@ typescript/packages/cli/src/lib/build-info.ts
 # Python
 __pycache__/
 *.pyc
+python/dist/
 *.egg-info/
 .eggs/
 build/
