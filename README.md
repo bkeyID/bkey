@@ -35,7 +35,9 @@ cargo add bkey
 
 ## Quick Start
 
-### Agent authentication (client credentials)
+### Request biometric approval (CIBA)
+
+CIBA is BKey's core primitive — your agent requests approval, the user approves with facial biometrics on their phone.
 
 ```typescript
 import { BKeyClient } from '@bkey/sdk';
@@ -45,17 +47,16 @@ const bkey = new BKeyClient({
   clientSecret: process.env.BKEY_CLIENT_SECRET,
 });
 
-// Request biometric approval for a checkout
-const checkout = await bkey.checkoutRequest({
-  merchantName: 'Example Store',
-  items: [{ name: 'Widget', price: 9.99 }],
-  amount: 9.99,
-  currency: 'USD',
+// Request biometric approval for any action
+const result = await bkey.approve('Deploy to production', {
+  scope: 'approve:action',
+  userDid: 'did:bkey:...',
 });
 
-// Poll until the user approves on their phone
-const result = await bkey.pollCheckoutStatus(checkout.id);
-console.log(result.status); // 'approved'
+if (result.approved) {
+  // result.accessToken is a short-lived EdDSA JWT proving consent
+  console.log('User approved!');
+}
 ```
 
 ### CLI
@@ -64,10 +65,13 @@ console.log(result.status); // 'approved'
 # Human login (device authorization flow)
 bkey auth login
 
-# Store a secret in the vault
+# Request biometric approval for any action
+bkey approve "Deploy to production" --scope approve:action
+
+# Store a secret in the vault (biometric access control)
 bkey vault store --key API_KEY --value sk-...
 
-# Request checkout approval
+# Agent-initiated checkout (built on CIBA)
 bkey checkout request --merchant "Store" --amount 29.99 --currency USD
 ```
 

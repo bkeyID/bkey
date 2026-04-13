@@ -55,46 +55,70 @@ bkey auth login
 ```
 </CodeGroup>
 
-## 4. Request an Approval
+## 4. Request Biometric Approval (CIBA)
+
+CIBA is BKey's core primitive. Your agent requests approval, the user gets a push notification on their phone, and approves with facial biometrics.
 
 <CodeGroup>
 ```typescript TypeScript
-// Initiate a checkout
-const checkout = await bkey.checkoutRequest({
-  merchantName: 'Example Store',
-  items: [{ name: 'Widget', price: 9.99 }],
-  amount: 9.99,
-  currency: 'USD',
+// Request biometric approval for any action
+const result = await bkey.approve('Deploy to production', {
+  scope: 'approve:action',
+  userDid: 'did:bkey:...',
 });
 
-// Wait for user to approve on their phone
-const result = await bkey.pollCheckoutStatus(checkout.id);
-console.log(result.status); // 'approved'
+if (result.approved) {
+  console.log('User approved! Proceeding...');
+  // result.accessToken is a short-lived EdDSA JWT proving consent
+}
 ```
 
 ```python Python
-checkout = client.checkout_request(
-    merchant_name="Example Store",
-    items=[{"name": "Widget", "price": 9.99}],
-    amount=9.99,
-    currency="USD",
+# Request biometric approval
+result = client.initiate_approval(
+    scope="approve:actions",
+    binding_message="Deploy to production",
 )
 
-result = client.checkout_poll(checkout.id)
-print(result.status)  # "approved"
+# Wait for user to approve on their phone
+approval = client.poll_approval(result.auth_req_id)
+print(approval.status)  # "approved"
 ```
 
 ```bash CLI
-bkey checkout request \
-  --merchant "Example Store" \
-  --amount 9.99 \
-  --currency USD
+bkey approve "Deploy to production" \
+  --scope approve:action \
+  --user-did did:bkey:...
 ```
 </CodeGroup>
 
+## 5. Use Cases Built on CIBA
+
+Once you have biometric approval, you can build on top of it:
+
+**Checkout** — Agent-initiated purchases:
+```bash
+bkey checkout request --merchant "Store" --amount 9.99 --currency USD
+```
+
+**Vault** — Access encrypted secrets with biometric gate:
+```bash
+bkey vault store --key API_KEY --value sk-...
+bkey vault access --id vault_item_123
+```
+
+**Custom actions** — Use the CIBA token as proof of consent in your own app:
+```typescript
+if (result.approved) {
+  // The accessToken proves the user said yes
+  await myApp.deleteResource(resourceId);
+}
+```
+
 ## Next Steps
 
-- [Authentication Overview](/authentication/overview) — understand the OAuth flows
+- [CIBA Deep Dive](/authentication/ciba) — understand the core approval flow
+- [Authentication Overview](/authentication/overview) — all OAuth flows
 - [Agent Checkout Guide](/guides/agent-checkout) — build an agentic checkout
 - [Vault Secrets Guide](/guides/vault-secrets) — store and retrieve secrets
 - [API Reference](/api-reference/overview) — full endpoint documentation

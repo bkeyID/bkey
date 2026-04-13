@@ -19,22 +19,24 @@ BKey is an **OAuth 2.1 + CIBA identity provider** that enables:
 - **Humans** to approve actions with facial biometrics on their mobile device
 - **Developers** to integrate biometric approval into any application
 
-## Core Capabilities
+## The Core Primitive: CIBA
 
-| Capability | Description |
-|-----------|-------------|
-| **Authentication** | OAuth 2.1 client credentials, device authorization, CIBA |
-| **Checkout** | Agent-initiated purchases with biometric approval |
-| **Vault** | Encrypted secret storage with biometric access control |
-| **Signing** | Document and transaction signing with biometric proof |
-
-## How It Works
+**CIBA (Client-Initiated Backchannel Authentication)** is BKey's foundation. Every capability is built on top of it:
 
 1. Your agent authenticates with BKey using **client credentials**
-2. Agent requests an action (checkout, vault access, signing)
-3. BKey sends a **CIBA push** to the user's mobile app
+2. Agent calls `bkey.approve("Deploy to production")`
+3. BKey sends a **push notification** to the user's mobile app
 4. User reviews and approves with **facial biometrics**
-5. Agent receives the approval and proceeds
+5. Agent receives a short-lived **EdDSA JWT** proving consent
+
+The approval token can be used as proof-of-consent in your own app, or passed to BKey's built-in capabilities:
+
+| Capability | Built on CIBA | Description |
+|-----------|---------------|-------------|
+| **Approval** | Core primitive | Per-action biometric authorization for any operation |
+| **Checkout** | `approve:payment` scope | Agent-initiated purchases with amount/merchant approval |
+| **Vault** | `approve:secrets` scope | Encrypted secret storage with biometric access gate |
+| **Signing** | `approve:action` scope | Document and transaction signing with biometric proof |
 
 ## SDKs
 
