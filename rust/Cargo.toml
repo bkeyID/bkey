@@ -1,0 +1,12 @@
+[package]
+name = "bkey"
+version = "0.1.0"
+edition = "2021"
+description = "BKey SDK — biometric approval, vault, and checkout for AI agents"
+license = "Apache-2.0"
+repository = "https://github.com/bkeyID/bkey"
+homepage = "https://bkey.id"
+documentation = "https://bkey.id/docs"
+readme = "README.md"
+keywords = ["bkey", "biometric", "ciba", "oauth", "agent"]
+categories = ["authentication", "api-bindings"]
