@@ -21,17 +21,9 @@ pip install bkey-sdk[async]   # + async support (httpx)
 pip install bkey-sdk[all]     # Everything
 ```
 
-### Go (coming soon)
+### Go & Rust — coming soon
 
-```bash
-go get github.com/bkeyID/bkey/go
-```
-
-### Rust (coming soon)
-
-```bash
-cargo add bkey
-```
+Go and Rust SDKs are in development. The `bkey` name is reserved on [crates.io](https://crates.io/crates/bkey). See [roadmap](#repository-structure) for status.
 
 ## Quick Start
 
