@@ -1,0 +1,39 @@
+---
+title: Authentication Overview
+description: OAuth 2.1 authentication flows supported by BKey.
+---
+
+# Authentication
+
+BKey supports three OAuth 2.1 grant types, each designed for a different use case.
+
+## Grant Types
+
+| Grant | Use Case | Who |
+|-------|----------|-----|
+| **Client Credentials** | Server-to-server, agent authentication | Machines |
+| **Device Authorization** | CLI login, IoT devices | Humans |
+| **CIBA** | Per-action biometric approval | Humans (triggered by agents) |
+
+## Token Format
+
+BKey issues JWTs signed with EdDSA (Ed25519). Tokens include:
+
+- `sub` — the user or client DID
+- `scope` — granted scopes
+- `exp` — expiration timestamp
+- `iss` — BKey issuer URL
+
+Verify tokens using the [JWKS endpoint](/api-reference/overview#jwks).
+
+## Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `vault:read` | Read vault items |
+| `vault:write` | Store vault items |
+| `checkout:initiate` | Initiate checkout requests |
+| `signing:request` | Request document signing |
+| `approve:actions` | Approve general actions |
+| `approve:payments` | Approve payment actions |
+| `approve:secrets` | Approve secret access |

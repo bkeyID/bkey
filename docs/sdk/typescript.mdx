@@ -1,0 +1,31 @@
+---
+title: TypeScript SDK
+description: "@bkey/sdk — TypeScript/JavaScript client for BKey."
+---
+
+# TypeScript SDK
+
+## Installation
+
+```bash
+npm install @bkey/sdk
+```
+
+## Usage
+
+```typescript
+import { BKeyClient } from '@bkey/sdk';
+
+const bkey = new BKeyClient({
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
+});
+```
+
+## API Reference
+
+Full TypeDoc reference: [SDK API Docs](https://bkeyid.github.io/bkey/sdk/typescript/)
+
+## Source
+
+[github.com/bkeyID/bkey/typescript/packages/sdk](https://github.com/bkeyID/bkey/tree/main/typescript/packages/sdk)

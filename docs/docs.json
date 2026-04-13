@@ -1,0 +1,64 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "BKey Developer Docs",
+  "colors": {
+    "primary": "#0066FF",
+    "light": "#3388FF",
+    "dark": "#0044CC"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["index", "quickstart"]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "authentication/overview",
+              "authentication/client-credentials",
+              "authentication/device-authorization",
+              "authentication/ciba"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/agent-checkout",
+              "guides/vault-secrets",
+              "guides/mcp-integration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["api-reference/overview"]
+          }
+        ]
+      },
+      {
+        "tab": "SDKs",
+        "groups": [
+          {
+            "group": "SDKs",
+            "pages": ["sdk/typescript", "sdk/python", "sdk/cli"]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/bkeyID/bkey"
+    }
+  }
+}

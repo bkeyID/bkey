@@ -1,0 +1,54 @@
+---
+title: CIBA
+description: Client-Initiated Backchannel Authentication — per-action biometric approval.
+---
+
+# CIBA (Client-Initiated Backchannel Authentication)
+
+CIBA is BKey's core mechanism. An agent or server requests approval, and the user gets a push notification to approve with facial biometrics.
+
+## When to Use
+
+- Agent requests human approval before an action
+- Per-transaction authorization
+- Elevated privilege operations
+
+## Flow
+
+1. Agent calls `POST /oauth/bc-authorize` with scope and binding message
+2. BKey sends push notification to user's mobile app
+3. User reviews the request and approves with biometrics
+4. Agent polls `POST /oauth/token` with `grant-type:ciba` until resolved
+
+## Example
+
+```http
+POST /oauth/bc-authorize
+Authorization: Bearer <agent_token>
+
+{
+  "scope": "approve:payments",
+  "binding_message": "Approve $29.99 purchase at Example Store"
+}
+```
+
+**Response:**
+
+```json
+{
+  "auth_req_id": "ciba_abc123",
+  "expires_in": 300,
+  "interval": 5
+}
+```
+
+Then poll:
+
+```http
+POST /oauth/token
+
+{
+  "grant_type": "urn:openid:params:grant-type:ciba",
+  "auth_req_id": "ciba_abc123"
+}
+```
