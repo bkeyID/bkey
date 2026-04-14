@@ -1,0 +1,75 @@
+{
+  "name": "@bkey/node",
+  "version": "0.1.0",
+  "description": "BKey server-side helpers — JWT verification, JWKS fetching, and Express/Fastify middleware for gating routes behind BKey biometric approval tokens.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./express": {
+      "import": "./dist/express.js",
+      "types": "./dist/express.d.ts"
+    },
+    "./fastify": {
+      "import": "./dist/fastify.js",
+      "types": "./dist/fastify.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify-plugin": "^5.1.0",
+    "jose": "~5.9.0"
+  },
+  "peerDependencies": {
+    "express": "^4.0.0 || ^5.0.0",
+    "fastify": "^4.0.0 || ^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.0",
+    "express": "^5.0.0",
+    "fastify": "^5.0.0",
+    "typescript": "^5.7.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bkeyID/bkey.git",
+    "directory": "typescript/packages/node"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "bkey",
+    "biometric",
+    "ciba",
+    "oauth",
+    "jwt",
+    "verify",
+    "middleware",
+    "express",
+    "fastify"
+  ]
+}
