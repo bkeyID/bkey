@@ -42,6 +42,45 @@
           {
             "group": "Overview",
             "pages": ["api-reference/overview"]
+          },
+          {
+            "group": "OAuth 2.1 & OIDC",
+            "pages": [
+              "api-reference/get-well-knownopenid-configuration",
+              "api-reference/get-oauthjwks",
+              "api-reference/post-oauthtoken",
+              "api-reference/post-oauthbc-authorize",
+              "api-reference/post-oauthrevoke",
+              "api-reference/post-oauthdevicecode",
+              "api-reference/get-userinfo"
+            ]
+          },
+          {
+            "group": "Vault",
+            "pages": [
+              "api-reference/get-v1vaultkeys",
+              "api-reference/post-v1vaultaccess",
+              "api-reference/get-v1vaultaccess"
+            ]
+          },
+          {
+            "group": "Checkout",
+            "pages": [
+              "api-reference/post-v1checkoutinitiate",
+              "api-reference/get-v1checkout-status"
+            ]
+          },
+          {
+            "group": "Payment Sessions",
+            "pages": [
+              "api-reference/post-v1payment-sessions",
+              "api-reference/post-v1payment-sessionsagent",
+              "api-reference/get-v1payment-sessions"
+            ]
+          },
+          {
+            "group": "Merchants",
+            "pages": ["api-reference/get-v1merchantsconnect"]
           }
         ]
       },

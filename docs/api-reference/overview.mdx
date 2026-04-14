@@ -15,17 +15,23 @@ https://api.bkey.id
 
 ## Authentication
 
-Most endpoints require a Bearer token obtained via OAuth 2.1 client credentials:
+Most endpoints require a Bearer token obtained via OAuth 2.1 client credentials or CIBA:
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-See [Authentication Overview](/authentication/overview) for details on obtaining tokens.
+Merchant-facing endpoints use a separate merchant API key scheme:
 
-## Response Format
+```http
+Authorization: Bearer mk_live_...
+```
 
-Successful responses return JSON with the relevant data directly:
+See [Authentication Overview](/authentication/overview) for details.
+
+## Response format
+
+Successful responses return JSON:
 
 ```json
 {
@@ -35,20 +41,21 @@ Successful responses return JSON with the relevant data directly:
 }
 ```
 
-## Error Format
+## Error format
 
-Errors return an appropriate HTTP status code with details:
+Errors return an appropriate HTTP status with structured details:
 
 ```json
 {
+  "success": false,
   "error": {
-    "type": "VALIDATION_ERROR",
+    "code": "invalid_argument",
     "message": "Amount is required"
   }
 }
 ```
 
-## HTTP Status Codes
+## HTTP status codes
 
 | Code | Meaning |
 |------|---------|
@@ -58,18 +65,19 @@ Errors return an appropriate HTTP status code with details:
 | `401` | Unauthorized — missing or invalid token |
 | `403` | Forbidden — insufficient scopes |
 | `404` | Resource not found |
+| `409` | Conflict — duplicate or concurrent request |
 | `429` | Rate limited |
 | `5XX` | Server error |
 
-## OpenID Discovery
+## OpenID Connect discovery
 
 ```
 GET /.well-known/openid-configuration
 ```
 
-Returns the OpenID Connect discovery document with all supported endpoints, grant types, and signing algorithms.
+Returns the OIDC discovery document with all supported endpoints, grant types, and signing algorithms.
 
-## JWKS
+## Signing keys
 
 ```
 GET /oauth/jwks
