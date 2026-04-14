@@ -10,6 +10,8 @@ typescript/packages/cli/src/lib/build-info.ts
 __pycache__/
 *.pyc
 python/dist/
+.venv/
+.pytest_cache/
 *.egg-info/
 .eggs/
 build/

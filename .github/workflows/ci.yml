@@ -8,7 +8,7 @@ on:
 
 jobs:
   typescript:
-    name: TypeScript — lint + build
+    name: TypeScript — build + test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,9 +25,10 @@ jobs:
           cache-dependency-path: typescript/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm test
 
   python:
-    name: Python — lint + typecheck
+    name: Python — lint + test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -38,7 +39,43 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv pip install --system -e ".[all]"
-      - run: python -c "from bkey.types import BKeyConfig; print('imports OK')"
-      - run: uv pip install --system ruff
-      - run: ruff check bkey/
+      - run: uv run --with ruff ruff check bkey/
+      - run: uv run --with pytest pytest tests/ -v
+
+  yaml-lint:
+    name: YAML — lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: "docs/ .github/ typescript/pnpm-workspace.yaml"
+          config_data: |
+            extends: default
+            rules:
+              line-length:
+                max: 200
+              truthy:
+                check-keys: false
+              document-start: disable
+
+  docs-lint:
+    name: Docs — markdown + MDX lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npx markdownlint-cli "docs/**/*.mdx" "*.md" --config '{"MD013": false, "MD033": false, "MD041": false, "MD024": false}'
+      - name: Validate Mintlify docs.json
+        run: node -e "JSON.parse(require('fs').readFileSync('docs/docs.json','utf8')); console.log('docs.json valid')"
+      - name: Check frontmatter in MDX files
+        run: |
+          for f in docs/**/*.mdx; do
+            if ! head -1 "$f" | grep -q '^---'; then
+              echo "Missing frontmatter: $f"
+              exit 1
+            fi
+          done
+          echo "All MDX files have frontmatter"

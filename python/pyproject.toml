@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "BKey SDK — biometric approval, vault, and checkout for AI agents"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "BKey", email = "dev@bkey.id" },
 ]
