@@ -46,41 +46,38 @@
           {
             "group": "OAuth 2.1 & OIDC",
             "pages": [
-              "api-reference/get-well-knownopenid-configuration",
-              "api-reference/get-oauthjwks",
-              "api-reference/post-oauthtoken",
-              "api-reference/post-oauthbc-authorize",
-              "api-reference/post-oauthrevoke",
-              "api-reference/post-oauthdevicecode",
-              "api-reference/get-userinfo"
+              "api-reference/oauth/get-well-knownopenid-configuration",
+              "api-reference/oauth/get-oauthjwks",
+              "api-reference/oauth/post-oauthtoken",
+              "api-reference/oauth/post-oauthbc-authorize",
+              "api-reference/oauth/post-oauthrevoke",
+              "api-reference/oauth/post-oauthdevicecode",
+              "api-reference/oauth/get-userinfo"
             ]
           },
           {
             "group": "Vault",
             "pages": [
-              "api-reference/get-v1vaultkeys",
-              "api-reference/post-v1vaultaccess",
-              "api-reference/get-v1vaultaccess"
+              "api-reference/vault/get-v1vaultkeys",
+              "api-reference/vault/post-v1vaultaccess",
+              "api-reference/vault/get-v1vaultaccess"
             ]
           },
           {
             "group": "Checkout",
             "pages": [
-              "api-reference/post-v1checkoutinitiate",
-              "api-reference/get-v1checkout-status"
+              "api-reference/checkout/post-v1checkoutinitiate",
+              "api-reference/checkout/get-v1checkout-status"
             ]
           },
           {
-            "group": "Payment Sessions",
+            "group": "Payments",
             "pages": [
-              "api-reference/post-v1payment-sessions",
-              "api-reference/post-v1payment-sessionsagent",
-              "api-reference/get-v1payment-sessions"
+              "api-reference/payments/post-v1payment-sessions",
+              "api-reference/payments/post-v1payment-sessionsagent",
+              "api-reference/payments/get-v1payment-sessions",
+              "api-reference/payments/get-v1merchantsconnect"
             ]
-          },
-          {
-            "group": "Merchants",
-            "pages": ["api-reference/get-v1merchantsconnect"]
           }
         ]
       },
