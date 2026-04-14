@@ -2,7 +2,6 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "BKey Developer Docs",
-  "basePath": "/docs",
   "colors": {
     "primary": "#0066FF",
     "light": "#3388FF",
