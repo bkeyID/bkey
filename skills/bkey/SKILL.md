@@ -95,7 +95,7 @@ If `bkey auth status` shows "config file" (human login) but no agent credentials
 | `BKEY_CLIENT_ID` | OAuth client ID (agent mode) |
 | `BKEY_CLIENT_SECRET` | OAuth client secret (agent mode) |
 | `BKEY_ACCESS_TOKEN` | Direct access token override |
-| `BKEY_BASE_URL` | Backend base URL (default: https://api.bkey.id) |
+| `BKEY_BASE_URL` | Backend base URL (default: `https://api.bkey.id`) |
 
 ## How It Works
 
