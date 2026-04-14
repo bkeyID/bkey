@@ -1,77 +1,86 @@
 # Releasing
 
-## How releases work
+## Per-package releases
 
-Releases are triggered by **GitHub Releases**. When you create a release with a tag like `v0.2.0`, CI automatically publishes:
+Each package is released independently using **per-package tags**. CI detects the tag prefix and publishes only the matching package.
 
-- `@bkey/sdk` + `@bkey/cli` → npm
-- `bkey-sdk` → PyPI
+| Tag pattern | Publishes | Registry |
+|-------------|-----------|----------|
+| `sdk-v0.2.0` | `@bkey/sdk` | npm |
+| `cli-v0.2.0` | `@bkey/cli` | npm |
+| `python-v0.2.0` | `bkey-sdk` | PyPI |
 
 ## Step-by-step
 
-### 1. Bump versions
+### 1. Bump the version
 
-Update version numbers in all package files:
+Only bump the package you're releasing:
 
 ```bash
-# TypeScript SDK
-# typescript/packages/sdk/package.json → "version": "0.2.0"
+# For @bkey/sdk
+# Edit: typescript/packages/sdk/package.json → "version": "0.2.0"
 
-# TypeScript CLI
-# typescript/packages/cli/package.json → "version": "0.2.0"
+# For @bkey/cli
+# Edit: typescript/packages/cli/package.json → "version": "0.2.0"
 
-# Python SDK
-# python/pyproject.toml → version = "0.2.0"
-# python/bkey/__init__.py → __version__ = "0.2.0"
-
-# Rust (if publishing)
-# rust/Cargo.toml → version = "0.2.0"
+# For bkey-sdk (Python)
+# Edit: python/pyproject.toml → version = "0.2.0"
+# Edit: python/bkey/__init__.py → __version__ = "0.2.0"
 ```
 
 ### 2. Commit and push
 
 ```bash
 git add -A
-git commit -m "chore: bump version to 0.2.0"
+git commit -m "chore: bump @bkey/sdk to 0.2.0"
 git push
 ```
 
-### 3. Create GitHub release
+### 3. Create a GitHub release
 
 ```bash
-gh release create v0.2.0 --title "v0.2.0" --generate-notes
+# SDK release
+gh release create sdk-v0.2.0 --title "@bkey/sdk v0.2.0" --generate-notes
+
+# CLI release
+gh release create cli-v0.2.0 --title "@bkey/cli v0.2.0" --generate-notes
+
+# Python release
+gh release create python-v0.2.0 --title "bkey-sdk v0.2.0" --generate-notes
 ```
 
-Or with custom notes:
-
-```bash
-gh release create v0.2.0 --title "v0.2.0" --notes "## Changes
-- Feature X
-- Fix Y
-"
-```
-
-CI will automatically publish to npm and PyPI.
+CI automatically publishes to the correct registry.
 
 ### 4. Verify
 
 ```bash
-npm info @bkey/sdk version    # should show 0.2.0
-pip index versions bkey-sdk   # should show 0.2.0
+# npm
+npm view @bkey/sdk version
+npm view @bkey/cli version
+
+# PyPI
+pip index versions bkey-sdk
 ```
 
-## Required secrets
+## Multiple packages in one session
 
-These must be set in the repo's Settings → Secrets → Actions:
+If both SDK and CLI change together:
 
-| Secret | Purpose |
-|--------|---------|
-| `NPM_TOKEN` | npm granular access token with publish to `@bkey/*` |
-| `PYPI_TOKEN` | PyPI API token scoped to `bkey-sdk` |
+```bash
+# Bump both versions, commit, push
+git commit -m "chore: bump sdk to 0.2.0, cli to 0.2.0"
+git push
+
+# Create two separate releases
+gh release create sdk-v0.2.0 --title "@bkey/sdk v0.2.0" --notes "..."
+gh release create cli-v0.2.0 --title "@bkey/cli v0.2.0" --notes "..."
+```
+
+Each triggers its own CI job independently.
 
 ## Manual publishing (if needed)
 
-Always use `pnpm publish` (not `npm publish`) for TypeScript packages. pnpm resolves `workspace:*` dependencies to actual version numbers. `npm publish` publishes the literal `workspace:*` string which breaks installs.
+Always use `pnpm publish` (not `npm publish`) for TypeScript packages — pnpm resolves `workspace:*` dependencies to actual version numbers.
 
 ```bash
 cd typescript
@@ -84,6 +93,15 @@ For Python:
 cd python
 uv build && uv publish --token YOUR_TOKEN
 ```
+
+## Required secrets
+
+Set in repo Settings → Secrets → Actions:
+
+| Secret | Purpose |
+|--------|---------|
+| `NPM_TOKEN` | npm granular access token with publish to `@bkey/*` |
+| `PYPI_TOKEN` | PyPI API token scoped to `bkey-sdk` |
 
 ## Rust releases
 

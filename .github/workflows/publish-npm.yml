@@ -8,10 +8,10 @@ permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Publish @bkey/* to npm
+  publish-sdk:
+    name: Publish @bkey/sdk to npm
     runs-on: ubuntu-latest
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: startsWith(github.event.release.tag_name, 'sdk-v')
     defaults:
       run:
         working-directory: typescript
@@ -28,15 +28,30 @@ jobs:
           cache-dependency-path: typescript/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-
-      # Use pnpm publish (not npm publish) to resolve workspace:* references
-      # pnpm replaces workspace:* with the actual version (e.g., ^0.1.0)
-      - name: Publish @bkey/sdk
-        run: pnpm --filter @bkey/sdk publish --access public --no-git-checks
+      - run: pnpm --filter @bkey/sdk publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @bkey/cli
-        run: pnpm --filter @bkey/cli publish --access public --no-git-checks
+  publish-cli:
+    name: Publish @bkey/cli to npm
+    runs-on: ubuntu-latest
+    if: startsWith(github.event.release.tag_name, 'cli-v')
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @bkey/cli publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
