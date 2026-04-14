@@ -6,7 +6,7 @@ If you discover a security vulnerability in BKey, please report it responsibly.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email **security@bkey.id** with:
+Instead, email **<security@bkey.id>** with:
 - Description of the vulnerability
 - Steps to reproduce
 - Potential impact
