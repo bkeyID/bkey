@@ -1,0 +1,86 @@
+---
+title: API Overview
+description: BKey API — base URL, authentication, response format, and error handling.
+---
+
+<Warning>
+  The BKey API is in **active development**. Endpoints and schemas may change without notice.
+</Warning>
+
+## Base URL
+
+```
+https://api.bkey.id
+```
+
+## Authentication
+
+Most endpoints require a Bearer token obtained via OAuth 2.1 client credentials or CIBA:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Merchant-facing endpoints use a separate merchant API key scheme:
+
+```http
+Authorization: Bearer mk_live_...
+```
+
+See [Authentication Overview](/authentication/overview) for details.
+
+## Response format
+
+Successful responses return JSON:
+
+```json
+{
+  "id": "chk_abc123",
+  "status": "pending",
+  "amount": 9.99
+}
+```
+
+## Error format
+
+Errors return an appropriate HTTP status with structured details:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "invalid_argument",
+    "message": "Amount is required"
+  }
+}
+```
+
+## HTTP status codes
+
+| Code | Meaning |
+|------|---------|
+| `200` | Success |
+| `201` | Created |
+| `400` | Validation error — check request body |
+| `401` | Unauthorized — missing or invalid token |
+| `403` | Forbidden — insufficient scopes |
+| `404` | Resource not found |
+| `409` | Conflict — duplicate or concurrent request |
+| `429` | Rate limited |
+| `5XX` | Server error |
+
+## OpenID Connect discovery
+
+```
+GET /.well-known/openid-configuration
+```
+
+Returns the OIDC discovery document with all supported endpoints, grant types, and signing algorithms.
+
+## Signing keys
+
+```
+GET /oauth/jwks
+```
+
+Returns the JSON Web Key Set for verifying BKey-issued JWTs. Keys use EdDSA (Ed25519).

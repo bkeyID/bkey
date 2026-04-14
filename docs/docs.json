@@ -40,6 +40,10 @@
         "tab": "API Reference",
         "groups": [
           {
+            "group": "Overview",
+            "pages": ["api-reference/overview"]
+          },
+          {
             "group": "OAuth 2.1 & OIDC",
             "pages": [
               "api-reference/get-well-knownopenid-configuration",
