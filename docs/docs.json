@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "BKey Developer Docs",
   "colors": {
-    "primary": "#0066FF",
-    "light": "#3388FF",
-    "dark": "#0044CC"
+    "primary": "#AF01AF",
+    "light": "#FDA9FF",
+    "dark": "#8C008C"
   },
   "favicon": "/favicon.svg",
   "navigation": {
@@ -96,5 +96,11 @@
     "socials": {
       "github": "https://github.com/bkeyID/bkey"
     }
-  }
+  },
+  "background": {
+    "color": {
+      "dark": "#240C25"
+    }
+  },
+  "logo": "/images/BKEY-1(1).svg"
 }
