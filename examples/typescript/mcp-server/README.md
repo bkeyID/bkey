@@ -42,7 +42,7 @@ Create a `.env` file next to `package.json` (copy from `.env.example`) and fill 
 
 | Variable | Where to get it |
 |---|---|
-| `BKEY_CLIENT_ID` / `BKEY_CLIENT_SECRET` | Register an **agent client** at https://bkey.id (agent clients use the `client_credentials` grant). |
+| `BKEY_CLIENT_ID` / `BKEY_CLIENT_SECRET` | Register an **agent client** at [bkey.id](https://bkey.id) (agent clients use the `client_credentials` grant). |
 | `BKEY_USER_DID` | The user who will get the approval push. In the BKey mobile app: Settings → Developer → Copy DID. |
 | `BKEY_APPROVAL_SCOPE` | The scope this server requests and verifies (default `approve:deploy`). Keep tight — one scope per sensitive action. |
 
