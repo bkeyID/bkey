@@ -82,7 +82,13 @@ jobs:
             "MD060": false
           }
           MLCFG
-          npx markdownlint-cli "docs/**/*.mdx" "*.md" --config /tmp/.markdownlint.json
+          npx markdownlint-cli "**/*.md" \
+            --ignore "**/node_modules/**" \
+            --ignore "**/target/**" \
+            --ignore "**/.pytest_cache/**" \
+            --ignore "**/dist/**" \
+            --ignore "**/build/**" \
+            --config /tmp/.markdownlint.json
       - name: Validate Mintlify docs.json
         run: node -e "JSON.parse(require('fs').readFileSync('docs/docs.json','utf8')); console.log('docs.json valid')"
       - name: Check frontmatter in MDX files
