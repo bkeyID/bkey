@@ -67,7 +67,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npx markdownlint-cli "docs/**/*.mdx" "*.md" --config '{"MD013": false, "MD033": false, "MD041": false, "MD024": false}'
+      - name: Lint markdown and MDX
+        run: |
+          echo '{"MD013": false, "MD033": false, "MD041": false, "MD024": false}' > /tmp/.markdownlint.json
+          npx markdownlint-cli "docs/**/*.mdx" "*.md" --config /tmp/.markdownlint.json
       - name: Validate Mintlify docs.json
         run: node -e "JSON.parse(require('fs').readFileSync('docs/docs.json','utf8')); console.log('docs.json valid')"
       - name: Check frontmatter in MDX files
