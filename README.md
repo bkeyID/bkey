@@ -93,8 +93,8 @@ bkey checkout request --merchant "Store" --amount 29.99 --currency USD
 ```
 typescript/     TypeScript SDK + CLI (pnpm monorepo)
 python/         Python SDK
-go/             Go SDK (coming soon)
-rust/           Rust SDK (coming soon)
+rust/           Rust SDK (name reserved on crates.io)
+skills/         Agent skills (agentskills.io standard)
 examples/       Code samples for all languages
 docs/           Developer documentation (Mintlify)
 specs/          OpenAPI spec + protocol docs
