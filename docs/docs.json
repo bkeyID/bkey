@@ -102,5 +102,8 @@
       "dark": "#240C25"
     }
   },
-  "logo": "/images/BKEY(1).svg"
+  "logo": {
+    "light": "/images/BKEY-1-dark.svg",
+    "dark": "/images/BKEY-1(1).svg"
+  }
 }
