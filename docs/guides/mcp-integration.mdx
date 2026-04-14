@@ -1,8 +1,160 @@
 ---
 title: MCP Integration
-description: Use BKey as an MCP tool for AI agent frameworks.
+description: Gate MCP tool calls behind BKey biometric approval so every sensitive action an AI agent takes carries a signed, auditable user consent.
 ---
 
-# MCP Integration Guide
+## The gap BKey fills in MCP
 
-_Coming soon — this guide will show how to use `@bkey/mcp` as an MCP tool so AI agents can request biometric approval through the Model Context Protocol._
+The [Model Context Protocol](https://modelcontextprotocol.io) spec (2025-06-18) handles two kinds of auth:
+
+- **Transport auth** — OAuth 2.1 on the MCP server itself, for connecting the agent. Spec'd, mature.
+- **Per-tool-call consent** — deliberately not spec'd. The spec says only that "there SHOULD always be a human in the loop with the ability to deny tool invocations." In practice this means each MCP client (Claude Desktop, Claude Code, Cursor, etc.) shows its own Allow/Deny dialog when an agent calls a tool.
+
+That per-call dialog is a **soft UI click**. It has no audit trail, no device binding, and no cryptographic proof the actual human consented. Anyone sitting at an unlocked workstation can approve a deploy, refund, or database drop.
+
+BKey replaces that click with a **biometric, signed, replay-resistant attestation**: the MCP server pushes an approval prompt to the operator's phone, and only runs the tool after verifying the EdDSA-signed token the user returns.
+
+```
+agent                 MCP server              BKey               operator's phone
+  │                      │                      │                      │
+  ├── deploy_to_prod ───▶│                      │                      │
+  │                      ├── bkey.approve() ───▶│                      │
+  │                      │                      ├── push ─────────────▶│
+  │                      │                      │         facial bio ──┤
+  │                      │                      │◀── approve ──────────┤
+  │                      │◀── CIBA token ───────│                      │
+  │                      ├── verifyToken ──────▶│                      │
+  │                      │   (JWKS, scope, iss) │                      │
+  │◀── deployed ─────────┤                      │                      │
+```
+
+Every tool call produces an auditable record: who approved, when, for what action, bound to that user's device and biometric.
+
+## Who this is for
+
+If your MCP server wraps anything with real stakes, you want this:
+
+- **CI/CD** — `deploy_to_production`, `rollback`, `promote_to_canary`
+- **Infra** — `kubectl_delete`, `terraform_apply`, `scale_down`
+- **Finance** — `send_payment`, `refund`, `transfer_funds`
+- **Admin** — `delete_user`, `grant_role`, `rotate_key`
+- **Data** — `drop_table`, `truncate`, `export_pii`
+
+For a `read_logs` tool, the existing Allow/Deny dialog is fine. For anything that writes, deletes, or spends — you want cryptographic consent.
+
+## The reference example
+
+We ship a working MCP server at [`examples/typescript/mcp-server`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/mcp-server) that exposes a single `deploy_to_production` tool gated on BKey CIBA.
+
+```bash
+git clone https://github.com/bkeyID/bkey.git
+cd bkey/examples/typescript/mcp-server
+npm install
+npm run build
+cp .env.example .env     # fill in CLIENT_ID / CLIENT_SECRET / USER_DID
+```
+
+Add it to Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "bkey-deploy-gate": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-server/dist/index.js"],
+      "env": {
+        "BKEY_CLIENT_ID": "your-agent-client-id",
+        "BKEY_CLIENT_SECRET": "your-agent-client-secret",
+        "BKEY_USER_DID": "did:bkey:...",
+        "BKEY_APPROVAL_SCOPE": "approve:deploy"
+      }
+    }
+  }
+}
+```
+
+Ask the agent to deploy something. Your phone buzzes. Approve on device. The tool runs.
+
+## The minimal pattern
+
+Inside `src/index.ts`, the gate is three calls:
+
+```typescript
+import { BKey } from '@bkey/sdk';
+import { verifyToken, BKeyAuthError } from '@bkey/node';
+
+const bkey = new BKey({
+  apiUrl: 'https://api.bkey.id',
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
+  did: process.env.BKEY_USER_DID!,
+});
+
+// Inside your MCP tool handler:
+const approval = await bkey.approve(`Deploy ${service}@${ref} to production`, {
+  scope: 'approve:deploy',
+  actionDetails: {
+    type: 'deploy',
+    description: `Deploy ${service}@${ref}`,
+    resource: `${service}@${ref}`,
+  },
+  expirySeconds: 300,
+});
+
+if (!approval.approved) {
+  return { content: [{ type: 'text', text: 'Denied on device.' }], isError: true };
+}
+
+// THIS is the line that actually matters — don't skip it.
+const claims = await verifyToken(approval.accessToken, {
+  issuer: 'https://api.bkey.id',
+  scope: 'approve:deploy',
+});
+
+// claims.sub is the verified user DID. claims.jti is the unique token ID
+// (use it for replay protection). Now run the action.
+await runDeploy({ service, ref, approvedBy: claims.sub, jti: claims.jti });
+```
+
+## Design rules
+
+**One scope per sensitive action.** Register scopes like `approve:deploy`, `approve:refund`, `approve:db:drop`. Scopes show up on the operator's phone and in audit logs, and they prevent a token issued for one action from being replayed against another. Don't reuse a single "admin" scope across everything.
+
+**Always verify the token server-side.** `approval.approved === true` tells you the CIBA flow finished. Only `verifyToken()` tells you the token is real, scoped correctly, and signed by BKey. Skipping `verifyToken` is the biggest mistake you can make — a compromised agent could feed you a fake approval result and you'd trust it.
+
+**Bind the approval to the action.** Use `actionDetails` to show the operator *exactly* what they're approving — amount, recipient, target resource, environment. If your tool takes arguments the operator cares about, surface them in the binding message and action details.
+
+**Treat `jti` as a nonce.** Every approval token has a unique `jti`. Record it server-side; reject replays. For a deploy, this means one approval → one deploy. If the agent tries to reuse the same token, your server refuses.
+
+**Keep `expirySeconds` tight.** 300s (5 min) is plenty for an operator to pull out their phone. Don't use hours-long expiries — approvals are per-action, not per-session.
+
+## What `verifyToken` actually checks
+
+From the [`@bkey/node` README](https://www.npmjs.com/package/@bkey/node):
+
+1. **Signature** — EdDSA (Ed25519) against BKey's JWKS. Algorithm pinned — no HS256 confusion, no `alg: none`.
+2. **Token shape** — three base64url segments, 8 KB max, no smuggled content.
+3. **Issuer** — must match `issuer` option, trailing-slash tolerant.
+4. **Expiry + not-before** — with configurable `clockTolerance`.
+5. **Audience** — if set, token's `aud` must match.
+6. **Scope** — token must carry ALL scopes you required.
+7. **Required claims** — `sub`, `iat`, `exp`, `iss`. Optional claims are type-checked if present.
+8. **Prototype pollution defense** — `__proto__` / `constructor` / `prototype` keys are stripped, returned object has a null prototype.
+
+Errors come back as typed `BKeyAuthError` with codes like `expired_token`, `insufficient_scope`, `invalid_signature`. Branch on `err.code` to give the agent actionable feedback.
+
+## Beyond the example
+
+The reference example hardcodes one `BKEY_USER_DID` for simplicity. For a shared MCP server:
+
+- **Resolve the DID from the tool context.** If the agent is logged in as a specific user, look up their DID from your session table.
+- **Or do a first-use pairing.** The first time a new user invokes a tool, use the [device authorization flow](/authentication/device-authorization) to pair their phone, store their DID, and gate subsequent calls on it.
+- **Log every approval.** Store `jti`, `sub`, `iat`, tool name, arguments, and the deploy result. This is your audit trail — the whole point of replacing the soft UI click.
+
+## References
+
+- [`@bkey/node` on npm](https://www.npmjs.com/package/@bkey/node) — verification library
+- [`@bkey/sdk` on npm](https://www.npmjs.com/package/@bkey/sdk) — agent client with `bkey.approve()`
+- [Reference example source](https://github.com/bkeyID/bkey/tree/main/examples/typescript/mcp-server)
+- [CIBA flow explainer](/authentication/ciba)
+- [Model Context Protocol spec](https://modelcontextprotocol.io/specification)
