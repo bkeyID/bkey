@@ -8,6 +8,7 @@ Each package is released independently using **per-package tags**. CI detects th
 |-------------|-----------|----------|
 | `sdk-v0.2.0` | `@bkey/sdk` | npm |
 | `cli-v0.2.0` | `@bkey/cli` | npm |
+| `node-v0.2.0` | `@bkey/node` | npm |
 | `python-v0.2.0` | `bkey-sdk` | PyPI |
 
 ## Step-by-step
@@ -22,6 +23,9 @@ Only bump the package you're releasing:
 
 # For @bkey/cli
 # Edit: typescript/packages/cli/package.json → "version": "0.2.0"
+
+# For @bkey/node
+# Edit: typescript/packages/node/package.json → "version": "0.2.0"
 
 # For bkey-sdk (Python)
 # Edit: python/pyproject.toml → version = "0.2.0"
