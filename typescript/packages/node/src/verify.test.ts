@@ -1,15 +1,15 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
-import { SignJWT, generateKeyPair, exportJWK } from 'jose';
+import { SignJWT, generateKeyPair, exportJWK, type KeyLike } from 'jose';
 import { describe, it, expect, beforeAll } from 'vitest';
 
-import { BKeyAuthError, extractBearerToken, verifyToken } from '../src/index.js';
+import { BKeyAuthError, extractBearerToken, verifyToken } from './index.js';
 
 // ─── Test harness: generate a keypair, mint real JWTs, pass JWKS inline ─
 
 interface TestKeys {
-  privateKey: CryptoKey;
-  publicKey: CryptoKey;
+  privateKey: KeyLike;
+  publicKey: KeyLike;
   publicJwk: Record<string, unknown>;
 }
 
@@ -18,7 +18,7 @@ async function makeKeys(): Promise<TestKeys> {
     crv: 'Ed25519',
     extractable: true,
   });
-  const publicJwk = (await exportJWK(publicKey)) as Record<string, unknown>;
+  const publicJwk = (await exportJWK(publicKey)) as unknown as Record<string, unknown>;
   publicJwk.kid = 'test-key-1';
   publicJwk.alg = 'EdDSA';
   publicJwk.use = 'sig';
@@ -319,8 +319,7 @@ describe('verifyToken', () => {
 
     it('rejects non-string token', async () => {
       await expect(
-        // @ts-expect-error — intentional bad input
-        verifyToken(null, { issuer, jwks: jwksFor(keys), scope: [] }),
+        verifyToken(null as unknown as string, { issuer, jwks: jwksFor(keys), scope: [] }),
       ).rejects.toMatchObject({ code: 'malformed_token' });
     });
 
@@ -354,7 +353,7 @@ describe('verifyToken', () => {
     it('rejects token with non-string sub', async () => {
       // Sign a token whose sub is a number — jose won't object to this,
       // so our post-verify type guard must catch it.
-      const token = await new SignJWT({ sub: 12345, scope: '' })
+      const token = await new SignJWT({ sub: 12345 as unknown as string, scope: '' })
         .setProtectedHeader({ alg: 'EdDSA', kid: 'test-key-1' })
         .setIssuer(issuer)
         .setIssuedAt()
@@ -444,21 +443,21 @@ describe('verifyToken', () => {
     });
 
     it('rejects invalid jwksCacheMaxAge', async () => {
-      const { createJwksFetcher } = await import('../src/jwks.js');
+      const { createJwksFetcher } = await import('./jwks.js');
       expect(() =>
         createJwksFetcher({ issuer, jwksCacheMaxAge: Infinity }),
       ).toThrow(BKeyAuthError);
     });
 
     it('rejects non-https JWKS URL', async () => {
-      const { createJwksFetcher } = await import('../src/jwks.js');
+      const { createJwksFetcher } = await import('./jwks.js');
       expect(() => createJwksFetcher({ jwksUrl: 'http://evil.example/jwks' })).toThrow(
         /https:\/\//,
       );
     });
 
     it('allows http://localhost JWKS URL for tests', async () => {
-      const { createJwksFetcher } = await import('../src/jwks.js');
+      const { createJwksFetcher } = await import('./jwks.js');
       expect(() => createJwksFetcher({ jwksUrl: 'http://localhost:8080/jwks' })).not.toThrow();
     });
 
@@ -487,7 +486,8 @@ describe('verifyToken', () => {
         verifyToken(token, {
           issuer,
           scope: [],
-          jwks: { keys: [{ kty: 'RSA', n: 'junk', e: 'AQAB' } as unknown as typeof keys.publicJwk] },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          jwks: { keys: [{ kty: 'RSA', n: 'junk', e: 'AQAB' } as any] },
         }),
       ).rejects.toMatchObject({ code: 'jwks_fetch_failed' });
     });
@@ -499,20 +499,21 @@ describe('verifyToken', () => {
         verifyToken(token, {
           issuer,
           scope: [],
-          jwks: { keys: [badJwk as unknown as typeof keys.publicJwk] },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          jwks: { keys: [badJwk as any] },
         }),
       ).rejects.toMatchObject({ code: 'jwks_fetch_failed' });
     });
 
     it('rejects control characters in issuer', async () => {
-      const { createJwksFetcher } = await import('../src/jwks.js');
+      const { createJwksFetcher } = await import('./jwks.js');
       expect(() =>
         createJwksFetcher({ issuer: 'https://api.bkey.id\u0000evil' }),
       ).toThrow(BKeyAuthError);
     });
 
     it('jwks_fetch_failed error does not echo the attacker-supplied jwksUrl', async () => {
-      const { createJwksFetcher } = await import('../src/jwks.js');
+      const { createJwksFetcher } = await import('./jwks.js');
       const evilUrl = '<script>alert(1)</script>';
       try {
         createJwksFetcher({ jwksUrl: evilUrl });
