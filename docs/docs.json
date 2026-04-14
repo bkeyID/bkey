@@ -105,5 +105,29 @@
   "logo": {
     "light": "/images/BKEY-1-dark.svg",
     "dark": "/images/BKEY-1(1).svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Home",
+        "href": "https://bkey.id"
+      },
+      {
+        "label": "Start",
+        "href": "https://bkey.id/start"
+      },
+      {
+        "label": "Use Cases",
+        "href": "https://bkey.id/use"
+      },
+      {
+        "label": "Tech",
+        "href": "https://bkey.id/tech"
+      },
+      {
+        "label": "About",
+        "href": "https://bkey.id/about"
+      }
+    ]
   }
 }
