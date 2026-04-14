@@ -94,6 +94,9 @@ jobs:
             fi
           done
           echo "All MDX files have frontmatter"
+      - name: Mintlify build validation
+        working-directory: docs
+        run: npx --yes mint@latest validate
       - name: Mintlify broken-links check
         working-directory: docs
         run: |
