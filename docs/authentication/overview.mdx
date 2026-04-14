@@ -30,10 +30,10 @@ Verify tokens using the [JWKS endpoint](/api-reference/oauth/get-oauthjwks).
 
 | Scope | Description |
 |-------|-------------|
-| `vault:read` | Read vault items |
-| `vault:write` | Store vault items |
-| `checkout:initiate` | Initiate checkout requests |
-| `signing:request` | Request document signing |
-| `approve:actions` | Approve general actions |
-| `approve:payments` | Approve payment actions |
-| `approve:secrets` | Approve secret access |
+| `vault:access` | Read vault items |
+| `vault:store` | Store vault items |
+| `signing:create` | Request document signing |
+| `signing:read` | Read signing status |
+| `identity:read` | Read user identity (UserInfo) |
+| `approve:action` | Approve general actions (CIBA) |
+| `approve:payment` | Approve payment actions (CIBA) |

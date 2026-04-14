@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "BKey API",
-    "description": "Biometric approval infrastructure for AI agents — OAuth 2.1 + CIBA",
+    "description": "Biometric approval infrastructure for AI agents \u2014 OAuth 2.1 + CIBA",
     "version": "1.0.0",
     "contact": {
       "name": "BKey",
@@ -90,7 +90,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Get JWKS"
       }
     },
     "/oauth/token": {
@@ -197,7 +198,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Token Endpoint"
       }
     },
     "/oauth/bc-authorize": {
@@ -292,7 +294,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "CIBA Backchannel Authorize"
       }
     },
     "/oauth/revoke": {
@@ -342,7 +345,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Revoke Token"
       }
     },
     "/oauth/device/code": {
@@ -421,7 +425,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Device Authorization"
       }
     },
     "/userinfo": {
@@ -440,7 +445,7 @@
                   "properties": {
                     "sub": {
                       "type": "string",
-                      "description": "Subject identifier — user DID or client ID"
+                      "description": "Subject identifier \u2014 user DID or client ID"
                     },
                     "scope": {
                       "type": "string",
@@ -487,7 +492,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Get UserInfo"
       }
     },
     "/.well-known/openid-configuration": {
@@ -596,7 +602,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "OIDC Discovery"
       }
     },
     "/v1/vault/keys": {
@@ -758,7 +765,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "List Vault Keys"
       }
     },
     "/v1/vault/access": {
@@ -822,11 +830,11 @@
                   "properties": {
                     "id": {
                       "type": "string",
-                      "description": "Access request ID — use this to poll status"
+                      "description": "Access request ID \u2014 use this to poll status"
                     },
                     "status": {
                       "type": "string",
-                      "description": "Initial status — typically \"pending\""
+                      "description": "Initial status \u2014 typically \"pending\""
                     },
                     "challengeHex": {
                       "type": "string",
@@ -1022,7 +1030,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Request Vault Access"
       }
     },
     "/v1/vault/access/{id}": {
@@ -1201,7 +1210,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Get Vault Access Status"
       }
     },
     "/v1/checkout/initiate": {
@@ -1309,7 +1319,7 @@
                         },
                         "status": {
                           "type": "string",
-                          "description": "Initial status — \"pending\" for standard flow, \"approved\" when created with a CIBA auto-approve token"
+                          "description": "Initial status \u2014 \"pending\" for standard flow, \"approved\" when created with a CIBA auto-approve token"
                         },
                         "challengeHex": {
                           "type": "string"
@@ -1465,7 +1475,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Initiate Checkout"
       }
     },
     "/v1/checkout/{id}/status": {
@@ -1669,7 +1680,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Get Checkout Status"
       }
     },
     "/v1/merchants/connect": {
@@ -1677,7 +1689,7 @@
         "tags": [
           "Payments"
         ],
-        "description": "Initiate merchant onboarding. Called by e-commerce platform plugins (WooCommerce, Medusa, etc.) to start the connect flow. Creates a session in Redis and redirects the merchant to the BKey approval page where they prove their identity with biometric approval. No authentication required — this endpoint is part of the onboarding handshake.",
+        "description": "Initiates a merchant onboarding handshake. The merchant provides their store URL and a return URL; BKey validates the request and redirects the merchant to an approval page. On success the caller receives a 302 redirect.",
         "parameters": [
           {
             "schema": {
@@ -1714,21 +1726,19 @@
         ],
         "responses": {
           "302": {
-            "description": "Redirect to the BKey approval page",
-            "content": {
-              "application/json": {
+            "description": "Redirect to the BKey approval page. The client must follow the Location header to complete the merchant onboarding handshake.",
+            "headers": {
+              "Location": {
+                "description": "URL of the BKey approval page the merchant should be redirected to.",
                 "schema": {
-                  "enum": [
-                    "null"
-                  ],
-                  "nullable": true,
-                  "description": "Redirect to the BKey approval page"
+                  "type": "string",
+                  "format": "uri"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid store_url, unsupported platform, or SSRF rejection",
+            "description": "Invalid request: the store_url or return_url failed validation.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1770,7 +1780,8 @@
             }
           }
         },
-        "security": []
+        "security": [],
+        "summary": "Merchant Connect"
       }
     },
     "/v1/payment-sessions/": {
@@ -2097,7 +2108,8 @@
           {
             "merchantApiKey": []
           }
-        ]
+        ],
+        "summary": "Create Payment Session"
       }
     },
     "/v1/payment-sessions/agent": {
@@ -2419,7 +2431,8 @@
               }
             }
           }
-        }
+        },
+        "summary": "Create Agent Payment Session"
       }
     },
     "/v1/payment-sessions/{id}": {
@@ -2427,7 +2440,7 @@
         "tags": [
           "Payments"
         ],
-        "description": "Get a payment session (public polling endpoint). Returns non-sensitive fields only — used by the shopper approval page to display payment details and poll for status changes.",
+        "description": "Get a payment session (public polling endpoint). Returns non-sensitive fields only \u2014 used by the shopper approval page to display payment details and poll for status changes.",
         "parameters": [
           {
             "schema": {
@@ -2626,7 +2639,8 @@
             }
           }
         },
-        "security": []
+        "security": [],
+        "summary": "Get Payment Session Status"
       }
     }
   },
