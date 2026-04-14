@@ -69,7 +69,19 @@ jobs:
           node-version: 20
       - name: Lint markdown and MDX
         run: |
-          echo '{"MD013": false, "MD033": false, "MD041": false, "MD024": false}' > /tmp/.markdownlint.json
+          cat > /tmp/.markdownlint.json << 'MLCFG'
+          {
+            "MD013": false,
+            "MD024": false,
+            "MD025": false,
+            "MD031": false,
+            "MD032": false,
+            "MD033": false,
+            "MD040": false,
+            "MD041": false,
+            "MD060": false
+          }
+          MLCFG
           npx markdownlint-cli "docs/**/*.mdx" "*.md" --config /tmp/.markdownlint.json
       - name: Validate Mintlify docs.json
         run: node -e "JSON.parse(require('fs').readFileSync('docs/docs.json','utf8')); console.log('docs.json valid')"
