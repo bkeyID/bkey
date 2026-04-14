@@ -94,3 +94,12 @@ jobs:
             fi
           done
           echo "All MDX files have frontmatter"
+      - name: Mintlify broken-links check
+        working-directory: docs
+        run: |
+          output=$(npx --yes mint@latest broken-links 2>&1)
+          echo "$output"
+          if echo "$output" | grep -q "found .* broken link"; then
+            echo "::error::Mintlify detected broken links. Fix them or update docs.json."
+            exit 1
+          fi
