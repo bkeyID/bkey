@@ -1,8 +1,20 @@
 name: Publish npm packages
 
+# Auto-publish on release is DISABLED — we're cutting releases manually from
+# the laptop for now (via `pnpm --filter <pkg> publish`). To re-enable auto,
+# restore `on: release: types: [published]` and the per-job `startsWith(...)`
+# tag guards below. See RELEASING.md.
+#
+# `workflow_dispatch` keeps each job runnable manually via the GitHub UI for
+# emergencies — pick which package from the input dropdown.
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        required: true
+        type: choice
+        options: [sdk, cli, node]
 
 permissions:
   contents: read
@@ -11,7 +23,7 @@ jobs:
   publish-sdk:
     name: Publish @bkey/sdk to npm
     runs-on: ubuntu-latest
-    if: startsWith(github.event.release.tag_name, 'sdk-v')
+    if: github.event.inputs.package == 'sdk'
     defaults:
       run:
         working-directory: typescript
@@ -35,7 +47,7 @@ jobs:
   publish-cli:
     name: Publish @bkey/cli to npm
     runs-on: ubuntu-latest
-    if: startsWith(github.event.release.tag_name, 'cli-v')
+    if: github.event.inputs.package == 'cli'
     defaults:
       run:
         working-directory: typescript
@@ -59,7 +71,7 @@ jobs:
   publish-node:
     name: Publish @bkey/node to npm
     runs-on: ubuntu-latest
-    if: startsWith(github.event.release.tag_name, 'node-v')
+    if: github.event.inputs.package == 'node'
     defaults:
       run:
         working-directory: typescript

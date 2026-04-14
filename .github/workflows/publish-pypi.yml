@@ -1,8 +1,14 @@
 name: Publish Python package
 
+# Auto-publish on release is DISABLED — we're cutting releases manually from
+# the laptop for now (via `uv build && uv publish`). To re-enable auto,
+# restore `on: release: types: [published]` and the `startsWith(...)` guard
+# below. See RELEASING.md.
+#
+# `workflow_dispatch` keeps the job runnable manually via the GitHub UI for
+# emergencies.
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,7 +17,6 @@ jobs:
   publish:
     name: Publish bkey-sdk to PyPI
     runs-on: ubuntu-latest
-    if: startsWith(github.event.release.tag_name, 'python-v')
     defaults:
       run:
         working-directory: python
