@@ -49,37 +49,37 @@
           {
             "group": "OAuth 2.1 & OIDC",
             "pages": [
-              "api-reference/oauth/get-well-knownopenid-configuration",
-              "api-reference/oauth/get-oauthjwks",
-              "api-reference/oauth/post-oauthtoken",
-              "api-reference/oauth/post-oauthbc-authorize",
-              "api-reference/oauth/post-oauthrevoke",
-              "api-reference/oauth/post-oauthdevicecode",
+              "api-reference/oauth/oidc-discovery",
+              "api-reference/oauth/get-jwks",
+              "api-reference/oauth/token-endpoint",
+              "api-reference/oauth/ciba-backchannel-authorize",
+              "api-reference/oauth/revoke-token",
+              "api-reference/oauth/device-authorization",
               "api-reference/oauth/get-userinfo"
             ]
           },
           {
             "group": "Vault",
             "pages": [
-              "api-reference/vault/get-v1vaultkeys",
-              "api-reference/vault/post-v1vaultaccess",
-              "api-reference/vault/get-v1vaultaccess"
+              "api-reference/vault/list-vault-keys",
+              "api-reference/vault/request-vault-access",
+              "api-reference/vault/get-vault-access-status"
             ]
           },
           {
             "group": "Checkout",
             "pages": [
-              "api-reference/checkout/post-v1checkoutinitiate",
-              "api-reference/checkout/get-v1checkout-status"
+              "api-reference/checkout/initiate-checkout",
+              "api-reference/checkout/get-checkout-status"
             ]
           },
           {
             "group": "Payments",
             "pages": [
-              "api-reference/payments/post-v1payment-sessions",
-              "api-reference/payments/post-v1payment-sessionsagent",
-              "api-reference/payments/get-v1payment-sessions",
-              "api-reference/payments/get-v1merchantsconnect"
+              "api-reference/payments/create-payment-session",
+              "api-reference/payments/create-agent-payment-session",
+              "api-reference/payments/get-payment-session-status",
+              "api-reference/payments/merchant-connect"
             ]
           }
         ]
