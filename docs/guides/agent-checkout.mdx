@@ -93,12 +93,13 @@ const initiated = (await bkey.createCheckoutRequest(checkoutInput)) as {
   checkoutRequest?: { id: string };
 };
 const checkoutId = initiated.id ?? initiated.checkoutRequest?.id;
+if (!checkoutId) throw new Error('No checkout ID in response');
 
 // 2. Poll status until terminal. 300s matches expiresInSecs so the
 //    agent doesn't sit forever if the push was missed.
 const deadline = Date.now() + 300_000;
 while (Date.now() < deadline) {
-  const raw = (await bkey.getCheckoutRequestStatus(checkoutId!)) as {
+  const raw = (await bkey.getCheckoutRequestStatus(checkoutId)) as {
     checkoutRequest?: CheckoutStatus;
   };
   const status = raw.checkoutRequest!;
