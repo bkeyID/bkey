@@ -1,8 +1,164 @@
 ---
 title: Agent Checkout
-description: Build an AI agent that can make purchases with biometric approval.
+description: Let AI agents propose purchases and gate the actual charge behind biometric approval on the user's phone, so every transaction carries signed, auditable human consent.
 ---
 
-# Agent Checkout Guide
+## The gap BKey fills for agent commerce
 
-_Coming soon — this guide will walk through building an AI agent that initiates purchases with BKey biometric approval._
+AI agents are starting to shop. They fill carts, compare prices, find coupons, and in some demos they "just buy it." The way that almost always works today is that the agent is handed a payment method — a saved card, a Stripe customer ID, a session with the user's card on file — and told to use it responsibly. The agent then either does, or doesn't.
+
+That's not consent. It's trust-on-first-use, extended indefinitely, to a stochastic system. If the agent fabricates a purchase, gets prompt-injected by a product page, or silently upsells itself, the charge goes through and the user finds out at statement time.
+
+BKey flips the direction. **The agent can initiate a checkout, but only a human with the phone and a biometric can authorize the charge.** The card, the billing details, the saved payment method — none of that is handed to the agent. The agent's capability is a proposal, not a payment.
+
+```
+agent                      BKey                    operator's phone           merchant
+  │                          │                          │                          │
+  ├── createCheckoutRequest ▶│                          │                          │
+  │   merchant + $ + items   │                          │                          │
+  │                          ├── push ──────────────────▶                          │
+  │                          │                    merchant, total,                 │
+  │                          │                    line items visible               │
+  │                          │                          │                          │
+  │                          │        facial biometric ─┤                          │
+  │                          │◀── approve ──────────────┤                          │
+  │                          ├── finalize checkout ─────┼─────────────────────────▶│
+  │                          │◀── orderConfirmation ────┼──────────────────────────┤
+  │◀── status: completed ────┤                          │                          │
+  │     orderConfirmation    │                          │                          │
+```
+
+Every purchase produces a signed, auditable record: who approved, when, for what merchant, for what amount, for which line items — bound to that user's device and biometric.
+
+## Who this is for
+
+If your agent touches money, you want this:
+
+- **Shopping agents** — "find me a replacement air filter for my vacuum and order it"
+- **Travel agents** — "book the flight closest to departure under $400"
+- **Grocery / recurring orders** — "refill the dog food and add oat milk"
+- **B2B procurement** — "renew the Notion seat and bill to ops@"
+- **Marketplace and ticket flows** — "grab two tickets when the drop goes live"
+
+The common shape: an agent builds a cart better and faster than the user would, and the user gets a one-tap approval on their phone to actually spend the money. No saved-card delegation, no "just trust me bro."
+
+## The reference example
+
+We ship a working agent checkout at [`examples/typescript/agent-checkout`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/agent-checkout) — a Node CLI that builds a fixed cart and initiates a BKey-gated checkout end-to-end.
+
+```bash
+git clone https://github.com/bkeyID/bkey.git
+cd bkey/examples/typescript/agent-checkout
+npm install
+npm run build
+cp .env.example .env     # fill in CLIENT_ID / CLIENT_SECRET / USER_DID / merchant
+node --env-file=.env dist/index.js
+```
+
+Your phone buzzes. You see `Acme Coffee` — `$69.00` — `2× Ethiopia Yirgacheffe, 1× Pour-over dripper`. Approve with facial biometrics. The script prints the order confirmation JSON on stdout.
+
+Logs go to stderr; the order confirmation is the only thing on stdout, so you can pipe the output straight into `jq` or back into the agent loop.
+
+## The minimal pattern
+
+Inside `src/index.ts`, the gate is two calls plus a polling loop:
+
+```typescript
+import { BKey } from '@bkey/sdk';
+import type { CheckoutRequestInput, CheckoutStatus } from '@bkey/sdk';
+
+const bkey = new BKey({
+  apiUrl: 'https://api.bkey.id',
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
+  did: process.env.BKEY_USER_DID!,
+});
+
+const checkoutInput: CheckoutRequestInput = {
+  merchantName: 'Acme Coffee',
+  merchantDomain: 'acme-coffee.example',
+  checkoutUrl: 'https://acme-coffee.example/checkout/bkey',
+  amount: 69.0,
+  currency: 'USD',
+  lineItems: [
+    { title: 'Ethiopia Yirgacheffe — 12oz', quantity: 2, price: 18.5 },
+    { title: 'Ceramic pour-over dripper', quantity: 1, price: 32.0 },
+  ],
+  expiresInSecs: 300,
+};
+
+// 1. Initiate — the user gets a push with exactly these line items.
+const initiated = (await bkey.createCheckoutRequest(checkoutInput)) as {
+  id?: string;
+  checkoutRequest?: { id: string };
+};
+const checkoutId = initiated.id ?? initiated.checkoutRequest?.id;
+if (!checkoutId) throw new Error('No checkout ID in response');
+
+// 2. Poll status until terminal. 300s matches expiresInSecs so the
+//    agent doesn't sit forever if the push was missed.
+const deadline = Date.now() + 300_000;
+while (Date.now() < deadline) {
+  const raw = (await bkey.getCheckoutRequestStatus(checkoutId)) as {
+    checkoutRequest?: CheckoutStatus;
+  };
+  const status = raw.checkoutRequest!;
+
+  if (status.status === 'completed' || status.status === 'payment_completed') {
+    console.log('Order placed:', status.orderConfirmation);
+    break;
+  }
+  if (
+    status.status === 'rejected' ||
+    status.status === 'expired' ||
+    status.status === 'payment_failed'
+  ) {
+    throw new Error(`Checkout ${status.status}`);
+  }
+
+  await new Promise((r) => setTimeout(r, 2_000));
+}
+```
+
+The agent never sees a card, never stores a billing address, never "has permission" to charge anything. It proposes a specific transaction. The human authorizes it with a biometric.
+
+## Design rules
+
+**Bind the approval to the exact transaction.** Every field in `CheckoutRequestInput` ends up in front of the user's eyes on their phone. `merchantName`, `amount`, `currency`, and `lineItems` are the consent contract — the user is approving *this* cart, not the agent's next thought. Never mutate the cart after initiating the request; if the cart changes, create a new request.
+
+**Surface merchant identity, not agent identity.** The push says "Acme Coffee wants \$69.00," not "Your AI assistant wants \$69.00." That's deliberate — the user is deciding whether to pay the merchant, the agent is plumbing. `merchantName` and `merchantDomain` must be the real merchant. Spoofing them is the kind of thing that erodes trust in the whole flow.
+
+**Keep `expiresInSecs` tight.** 300 seconds (5 minutes) is the default and the upper bound we recommend. Approvals are per-transaction; if the user walked away, the request should expire rather than sit open for an hour waiting for them to come back. Long expiries are an anti-pattern — treat a missed push as "no," not "not yet."
+
+**Use the checkout ID for replay protection.** Each checkout is single-use. One approval finalizes exactly one order. If the agent needs to retry, create a new checkout with a new ID — don't re-submit the same one. The BKey backend enforces this, but design your agent loop around it too: "approved" is a terminal state, not a reusable token.
+
+**Never expose `BKEY_CLIENT_SECRET` to the LLM.** Agent client credentials live on the server side of your agent runtime. The LLM, the tool calls, the prompt — none of them should have access. Structurally this means your agent talks to *your* backend, and *your* backend talks to BKey. If the model can see the secret, so can a prompt injection.
+
+**Itemize — don't roll line items into "subtotal".** `lineItems` is what lets the user catch a problem before spending money. "\$69 to Acme Coffee" is the top-line. "2× Ethiopia Yirgacheffe at \$18.50, 1× dripper at \$32" is what lets the user notice the agent picked the wrong beans. Always send the itemization you built the cart from.
+
+## What the user sees
+
+When `createCheckoutRequest` fires, the BKey mobile app gets a push notification. Opening it shows:
+
+- **Merchant name and domain** at the top — the entity being paid.
+- **Total amount and currency** — what the charge will be.
+- **Itemized line items** — title, quantity, unit price.
+- **Expiry countdown** — how long they have to decide.
+
+The user reviews, approves with facial biometrics (or rejects). Approval finalizes the checkout with the merchant server-side; the agent polling the status sees `completed` with the `orderConfirmation` populated.
+
+## Beyond the example
+
+The reference example uses a fixed cart and a placeholder merchant. A real deployment wires in:
+
+- **A real agent.** Replace the hardcoded `lineItems` with whatever your agent assembled — catalog search, price comparison, a chat loop, a procurement workflow.
+- **A real merchant integration.** `checkoutUrl` is where BKey finalizes the order. For BKey-native merchants (see the [Shopify and WooCommerce demo plugins](https://github.com/bkeyID/bkey/tree/main/examples) in this repo) the flow is automatic. For custom merchants, implement the callback on your own checkout endpoint and populate `orderConfirmation` with order number, tracking, etc.
+- **Multi-user.** The example hardcodes one `BKEY_USER_DID`. For an agent serving many users, resolve the DID from the authenticated agent session (the user who asked for the purchase) and pair new users with the [device authorization flow](/authentication/device-authorization).
+- **Audit.** Log `checkoutId`, `userDid`, `amount`, `lineItems`, `approvedAt`, `completedAt`, `orderConfirmation`. This is the whole point — you now have a signed trail of every agent-initiated purchase.
+
+## References
+
+- [`@bkey/sdk` on npm](https://www.npmjs.com/package/@bkey/sdk) — `createCheckoutRequest` / `getCheckoutRequestStatus` source of truth
+- [Reference example source](https://github.com/bkeyID/bkey/tree/main/examples/typescript/agent-checkout)
+- [MCP auth gate guide](/guides/mcp-integration) — the sibling pattern for gating MCP tool calls on biometric approval
+- [CIBA flow explainer](/authentication/ciba) — the underlying push-to-phone protocol
