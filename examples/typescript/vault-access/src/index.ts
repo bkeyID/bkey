@@ -50,7 +50,7 @@ function usage(): never {
       'bkey-vault-example — store/retrieve E2EE secrets via BKey',
       '',
       'Usage:',
-      '  bkey-vault-example store <name> <value> [--purpose <text>]',
+      '  bkey-vault-example store <name> <value>',
       '  bkey-vault-example access <name> [--purpose <text>]',
       '',
       'Env vars (see .env.example):',
@@ -103,13 +103,12 @@ async function main() {
 
   switch (cmd) {
     case 'store': {
-      const [name, value, ...flags] = rest;
+      const [name, value] = rest;
       if (!name || !value) {
         process.stderr.write('Error: store requires <name> <value>.\n\n');
         usage();
       }
-      const purpose = parsePurpose(flags, `Store ${name} via vault-access example`);
-      await runStore(bkey, name, value, purpose);
+      await runStore(bkey, name, value);
       return;
     }
     case 'access': {
@@ -130,12 +129,7 @@ async function main() {
 
 // ── Store: encrypt client-side, send to phone for confirmation ──────
 
-async function runStore(
-  bkey: BKey,
-  name: string,
-  value: string,
-  _purpose: string,
-): Promise<void> {
+async function runStore(bkey: BKey, name: string, value: string): Promise<void> {
   // 1. Fetch the vault's X25519 public key. This is the *phone's* key —
   //    the server stores it but cannot derive the matching private key
   //    (that lives in the Secure Enclave / Keystore on the user's device).
