@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "BKey API",
-    "description": "Biometric approval infrastructure for AI agents \u2014 OAuth 2.1 + CIBA",
+    "description": "Biometric approval infrastructure for AI agents — OAuth 2.1 + CIBA",
     "version": "1.0.0",
     "contact": {
       "name": "BKey",
@@ -34,6 +34,7 @@
   "paths": {
     "/oauth/jwks": {
       "get": {
+        "summary": "Get JWKS",
         "tags": [
           "OAuth"
         ],
@@ -90,12 +91,12 @@
               }
             }
           }
-        },
-        "summary": "Get JWKS"
+        }
       }
     },
     "/oauth/token": {
       "post": {
+        "summary": "Token Endpoint",
         "tags": [
           "OAuth"
         ],
@@ -198,12 +199,12 @@
               }
             }
           }
-        },
-        "summary": "Token Endpoint"
+        }
       }
     },
     "/oauth/bc-authorize": {
       "post": {
+        "summary": "CIBA Backchannel Authorize",
         "tags": [
           "OAuth"
         ],
@@ -294,12 +295,12 @@
               }
             }
           }
-        },
-        "summary": "CIBA Backchannel Authorize"
+        }
       }
     },
     "/oauth/revoke": {
       "post": {
+        "summary": "Revoke Token",
         "tags": [
           "OAuth"
         ],
@@ -345,12 +346,12 @@
               }
             }
           }
-        },
-        "summary": "Revoke Token"
+        }
       }
     },
     "/oauth/device/code": {
       "post": {
+        "summary": "Device Authorization",
         "tags": [
           "OAuth"
         ],
@@ -425,12 +426,12 @@
               }
             }
           }
-        },
-        "summary": "Device Authorization"
+        }
       }
     },
     "/userinfo": {
       "get": {
+        "summary": "Get UserInfo",
         "tags": [
           "OAuth"
         ],
@@ -445,7 +446,7 @@
                   "properties": {
                     "sub": {
                       "type": "string",
-                      "description": "Subject identifier \u2014 user DID or client ID"
+                      "description": "Subject identifier — user DID or client ID"
                     },
                     "scope": {
                       "type": "string",
@@ -492,12 +493,12 @@
               }
             }
           }
-        },
-        "summary": "Get UserInfo"
+        }
       }
     },
     "/.well-known/openid-configuration": {
       "get": {
+        "summary": "OIDC Discovery",
         "tags": [
           "OAuth"
         ],
@@ -602,12 +603,12 @@
               }
             }
           }
-        },
-        "summary": "OIDC Discovery"
+        }
       }
     },
     "/v1/vault/keys": {
       "get": {
+        "summary": "List Vault Keys",
         "tags": [
           "Vault"
         ],
@@ -765,12 +766,12 @@
               }
             }
           }
-        },
-        "summary": "List Vault Keys"
+        }
       }
     },
     "/v1/vault/access": {
       "post": {
+        "summary": "Request Vault Access",
         "tags": [
           "Vault"
         ],
@@ -830,11 +831,11 @@
                   "properties": {
                     "id": {
                       "type": "string",
-                      "description": "Access request ID \u2014 use this to poll status"
+                      "description": "Access request ID — use this to poll status"
                     },
                     "status": {
                       "type": "string",
-                      "description": "Initial status \u2014 typically \"pending\""
+                      "description": "Initial status — typically \"pending\""
                     },
                     "challengeHex": {
                       "type": "string",
@@ -1030,12 +1031,12 @@
               }
             }
           }
-        },
-        "summary": "Request Vault Access"
+        }
       }
     },
     "/v1/vault/access/{id}": {
       "get": {
+        "summary": "Get Vault Access Status",
         "tags": [
           "Vault"
         ],
@@ -1210,12 +1211,12 @@
               }
             }
           }
-        },
-        "summary": "Get Vault Access Status"
+        }
       }
     },
     "/v1/checkout/initiate": {
       "post": {
+        "summary": "Initiate Checkout",
         "tags": [
           "Checkout"
         ],
@@ -1319,7 +1320,7 @@
                         },
                         "status": {
                           "type": "string",
-                          "description": "Initial status \u2014 \"pending\" for standard flow, \"approved\" when created with a CIBA auto-approve token"
+                          "description": "Initial status — \"pending\" for standard flow, \"approved\" when created with a CIBA auto-approve token, \"completed\" when the auto-approve Stripe payment succeeded synchronously"
                         },
                         "challengeHex": {
                           "type": "string"
@@ -1331,6 +1332,16 @@
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        "sptId": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Stripe Payment Token ID. Present when CIBA auto-approve + Stripe payment succeeded synchronously."
+                        },
+                        "paymentIntentId": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Stripe PaymentIntent ID. Present when CIBA auto-approve + Stripe payment succeeded synchronously."
                         }
                       },
                       "required": [
@@ -1475,12 +1486,12 @@
               }
             }
           }
-        },
-        "summary": "Initiate Checkout"
+        }
       }
     },
     "/v1/checkout/{id}/status": {
       "get": {
+        "summary": "Get Checkout Status",
         "tags": [
           "Checkout"
         ],
@@ -1515,11 +1526,66 @@
                         },
                         "status": {
                           "type": "string",
-                          "description": "One of: pending, approved, rejected, completed, expired"
+                          "description": "One of: pending, approved, payment_processing, payment_completed, payment_failed, completed, rejected, expired"
                         },
                         "orderConfirmation": {
                           "type": "object",
-                          "additionalProperties": {},
+                          "properties": {
+                            "provider": {
+                              "type": "string",
+                              "enum": [
+                                "stripe_connect",
+                                "stripe_spt"
+                              ]
+                            },
+                            "sptId": {
+                              "type": "string"
+                            },
+                            "paymentIntentId": {
+                              "type": "string"
+                            },
+                            "stripePaymentMethodId": {
+                              "type": "string"
+                            },
+                            "amount": {
+                              "type": "integer"
+                            },
+                            "currency": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "sptExpiresAt": {
+                              "type": "string"
+                            },
+                            "error": {
+                              "type": "string"
+                            },
+                            "chargeId": {
+                              "type": "string"
+                            },
+                            "paidAt": {
+                              "type": "string"
+                            },
+                            "failureMessage": {
+                              "type": "string"
+                            },
+                            "failureCode": {
+                              "type": "string"
+                            },
+                            "failedAt": {
+                              "type": "string"
+                            },
+                            "orderId": {
+                              "type": "string"
+                            },
+                            "metadata": {
+                              "type": "object",
+                              "additionalProperties": {}
+                            }
+                          },
+                          "additionalProperties": false,
                           "nullable": true
                         },
                         "approvedAt": {
@@ -1535,6 +1601,16 @@
                         "expiresAt": {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        "sptId": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Stripe Payment Token ID. Extracted from orderConfirmation.sptId once the Stripe-based completion path has run. Null on pending / expired / non-Stripe checkouts."
+                        },
+                        "paymentIntentId": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Stripe PaymentIntent ID. Read from the checkout row's stripe_payment_intent_id column once a PaymentIntent has been created on the merchant's connected account. Null on pending / SPT-only / non-Stripe checkouts."
                         }
                       },
                       "required": [
@@ -1680,16 +1756,16 @@
               }
             }
           }
-        },
-        "summary": "Get Checkout Status"
+        }
       }
     },
     "/v1/merchants/connect": {
       "get": {
+        "summary": "Merchant Connect",
         "tags": [
           "Payments"
         ],
-        "description": "Initiates a merchant onboarding handshake. The merchant provides their store URL and a return URL; BKey validates the request and redirects the merchant to an approval page. On success the caller receives a 302 redirect.",
+        "description": "Initiate merchant onboarding. Called by e-commerce platform plugins (WooCommerce, Medusa, etc.) to start the connect flow. Creates a session in Redis and redirects the merchant to the BKey approval page where they prove their identity with biometric approval. No authentication required — this endpoint is part of the onboarding handshake.",
         "parameters": [
           {
             "schema": {
@@ -1729,7 +1805,7 @@
             "description": "Redirect to the BKey approval page. The client must follow the Location header to complete the merchant onboarding handshake.",
             "headers": {
               "Location": {
-                "description": "URL of the BKey approval page the merchant should be redirected to.",
+                "description": "URL to redirect the client to.",
                 "schema": {
                   "type": "string",
                   "format": "uri"
@@ -1738,7 +1814,7 @@
             }
           },
           "400": {
-            "description": "Invalid request: the store_url or return_url failed validation.",
+            "description": "Invalid store_url, unsupported platform, or SSRF rejection",
             "content": {
               "application/json": {
                 "schema": {
@@ -1780,12 +1856,12 @@
             }
           }
         },
-        "security": [],
-        "summary": "Merchant Connect"
+        "security": []
       }
     },
     "/v1/payment-sessions/": {
       "post": {
+        "summary": "Create Payment Session",
         "tags": [
           "Payments"
         ],
@@ -1894,7 +1970,7 @@
                         },
                         "status": {
                           "type": "string",
-                          "description": "One of: pending, approved, completed, rejected, expired, refunded"
+                          "description": "One of: pending, awaiting_approval, approved, completed, rejected, failed, expired, refunded"
                         },
                         "approvalUrl": {
                           "type": "string",
@@ -1910,9 +1986,6 @@
                           "maxLength": 3
                         },
                         "merchantName": {
-                          "type": "string"
-                        },
-                        "merchantDomain": {
                           "type": "string"
                         },
                         "lineItems": {
@@ -1946,17 +2019,40 @@
                           "type": "string",
                           "format": "date-time"
                         },
+                        "merchantDomain": {
+                          "type": "string"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
                         },
+                        "externalOrderId": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Merchant's own order ID — echoed back so the merchant plugin can correlate the BKey session with the shop's order."
+                        },
                         "sptId": {
                           "type": "string",
-                          "nullable": true
+                          "nullable": true,
+                          "description": "Stripe Payment Token ID. Populated after payment succeeds."
                         },
                         "paymentIntentId": {
                           "type": "string",
-                          "nullable": true
+                          "nullable": true,
+                          "description": "Stripe PaymentIntent ID. Populated after payment succeeds."
+                        },
+                        "returnUrl": {
+                          "type": "string",
+                          "description": "Merchant success redirect URL."
+                        },
+                        "cancelUrl": {
+                          "type": "string",
+                          "description": "Merchant cancel redirect URL."
+                        },
+                        "paymentResult": {
+                          "type": "object",
+                          "additionalProperties": {},
+                          "description": "Raw payment processor result (Stripe-shaped). Present on completed / failed sessions."
                         }
                       },
                       "required": [
@@ -2108,12 +2204,12 @@
           {
             "merchantApiKey": []
           }
-        ],
-        "summary": "Create Payment Session"
+        ]
       }
     },
     "/v1/payment-sessions/agent": {
       "post": {
+        "summary": "Create Agent Payment Session",
         "tags": [
           "Payments"
         ],
@@ -2223,7 +2319,7 @@
                         },
                         "status": {
                           "type": "string",
-                          "description": "One of: pending, approved, completed, rejected, expired, refunded"
+                          "description": "One of: pending, awaiting_approval, approved, completed, rejected, failed, expired, refunded"
                         },
                         "approvalUrl": {
                           "type": "string",
@@ -2239,9 +2335,6 @@
                           "maxLength": 3
                         },
                         "merchantName": {
-                          "type": "string"
-                        },
-                        "merchantDomain": {
                           "type": "string"
                         },
                         "lineItems": {
@@ -2275,17 +2368,40 @@
                           "type": "string",
                           "format": "date-time"
                         },
+                        "merchantDomain": {
+                          "type": "string"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
                         },
+                        "externalOrderId": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Merchant's own order ID — echoed back so the merchant plugin can correlate the BKey session with the shop's order."
+                        },
                         "sptId": {
                           "type": "string",
-                          "nullable": true
+                          "nullable": true,
+                          "description": "Stripe Payment Token ID. Populated after payment succeeds."
                         },
                         "paymentIntentId": {
                           "type": "string",
-                          "nullable": true
+                          "nullable": true,
+                          "description": "Stripe PaymentIntent ID. Populated after payment succeeds."
+                        },
+                        "returnUrl": {
+                          "type": "string",
+                          "description": "Merchant success redirect URL."
+                        },
+                        "cancelUrl": {
+                          "type": "string",
+                          "description": "Merchant cancel redirect URL."
+                        },
+                        "paymentResult": {
+                          "type": "object",
+                          "additionalProperties": {},
+                          "description": "Raw payment processor result (Stripe-shaped). Present on completed / failed sessions."
                         }
                       },
                       "required": [
@@ -2431,16 +2547,16 @@
               }
             }
           }
-        },
-        "summary": "Create Agent Payment Session"
+        }
       }
     },
     "/v1/payment-sessions/{id}": {
       "get": {
+        "summary": "Get Payment Session Status",
         "tags": [
           "Payments"
         ],
-        "description": "Get a payment session (public polling endpoint). Returns non-sensitive fields only \u2014 used by the shopper approval page to display payment details and poll for status changes.",
+        "description": "Get a payment session (public polling endpoint). Returns non-sensitive fields only — used by the shopper approval page to display payment details and poll for status changes.",
         "parameters": [
           {
             "schema": {
@@ -2471,7 +2587,7 @@
                         },
                         "status": {
                           "type": "string",
-                          "description": "One of: pending, approved, completed, rejected, expired, refunded"
+                          "description": "One of: pending, awaiting_approval, approved, completed, rejected, failed, expired, refunded"
                         },
                         "approvalUrl": {
                           "type": "string",
@@ -2487,9 +2603,6 @@
                           "maxLength": 3
                         },
                         "merchantName": {
-                          "type": "string"
-                        },
-                        "merchantDomain": {
                           "type": "string"
                         },
                         "lineItems": {
@@ -2522,18 +2635,6 @@
                         "expiresAt": {
                           "type": "string",
                           "format": "date-time"
-                        },
-                        "createdAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "sptId": {
-                          "type": "string",
-                          "nullable": true
-                        },
-                        "paymentIntentId": {
-                          "type": "string",
-                          "nullable": true
                         }
                       },
                       "required": [
@@ -2639,8 +2740,7 @@
             }
           }
         },
-        "security": [],
-        "summary": "Get Payment Session Status"
+        "security": []
       }
     }
   },
