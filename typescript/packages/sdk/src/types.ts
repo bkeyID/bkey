@@ -173,3 +173,30 @@ export interface SpendingLimit {
   dailySpent: number;
   monthlySpent: number;
 }
+
+// ─── MPP (Machine Payments Protocol) ─────────────────────────────
+
+export interface MppAuthorizeInput {
+  amountCents: number;
+  currency?: string;
+  paymentMethodId: string;
+  merchantName?: string;
+  description?: string;
+  resource?: string;
+}
+
+export interface MppAuthorizeResponse {
+  status: 'authorized' | 'pending_approval';
+  sptId?: string;
+  expiresAt?: string;
+  authorizationId?: string;
+  authReqId?: string;
+  expiresIn?: number;
+  interval?: number;
+}
+
+export interface MppPollResponse {
+  id: string;
+  status: 'pending' | 'authorized' | 'expired' | 'failed';
+  sptCredential?: string;
+}

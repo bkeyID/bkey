@@ -254,8 +254,73 @@ export const proxyCommand = new Command('proxy')
             process.exit(1);
           }
         } else {
-          console.error('HTTP 402 Payment Required — no PAYMENT-REQUIRED header found.');
-          process.exit(1);
+          // Check for MPP (Stripe) payment requirement
+          const mppHeader = res.headers.get('x-payment-required');
+          if (mppHeader) {
+            console.error('\n💳 Payment required (MPP/Stripe). Initiating authorization...');
+            try {
+              const mppRequired = JSON.parse(mppHeader);
+
+              const mppAuthRes = (await api.request('POST', '/v1/mpp/authorize', {
+                amountCents: mppRequired.amount ?? mppRequired.maxAmount,
+                currency: mppRequired.currency ?? 'USD',
+                paymentMethodId: mppRequired.paymentMethodId,
+                merchantName: mppRequired.merchantName,
+                description: mppRequired.description,
+                resource: url,
+              })) as { status: string; sptId?: string; authorizationId?: string; expiresAt?: string };
+
+              if (mppAuthRes.status === 'authorized' && mppAuthRes.sptId) {
+                console.error('✅ Auto-approved. Retrying with SPT...');
+                const paidRes = await fetch(url, {
+                  method: method.toUpperCase(),
+                  headers: {
+                    ...resolvedHeaders,
+                    'payment_method_data[shared_payment_granted_token]': mppAuthRes.sptId,
+                  },
+                  body: opts.data ?? undefined,
+                  signal: AbortSignal.timeout(60_000),
+                });
+
+                const paidBody = (paidRes.headers.get('content-type') ?? '').includes('json')
+                  ? JSON.stringify(await paidRes.json(), null, 2)
+                  : await paidRes.text();
+                process.stdout.write(paidBody);
+                if (!paidBody.endsWith('\n')) process.stdout.write('\n');
+                if (!paidRes.ok) process.exit(1);
+                return;
+              } else if (mppAuthRes.authorizationId) {
+                console.error('📱 Biometric approval required — check your phone.');
+                const mppSigned = await api.pollMppAuthorization(mppAuthRes.authorizationId, { timeoutMs: 120_000 });
+
+                console.error('✅ Approved. Retrying with SPT...');
+                const sptData = JSON.parse(Buffer.from(mppSigned.sptCredential!, 'base64').toString());
+                const paidRes = await fetch(url, {
+                  method: method.toUpperCase(),
+                  headers: {
+                    ...resolvedHeaders,
+                    'payment_method_data[shared_payment_granted_token]': sptData.sptId,
+                  },
+                  body: opts.data ?? undefined,
+                  signal: AbortSignal.timeout(60_000),
+                });
+
+                const paidBody = (paidRes.headers.get('content-type') ?? '').includes('json')
+                  ? JSON.stringify(await paidRes.json(), null, 2)
+                  : await paidRes.text();
+                process.stdout.write(paidBody);
+                if (!paidBody.endsWith('\n')) process.stdout.write('\n');
+                if (!paidRes.ok) process.exit(1);
+                return;
+              }
+            } catch (mppErr) {
+              console.error(`MPP payment failed: ${(mppErr as Error).message}`);
+              process.exit(1);
+            }
+          } else {
+            console.error('HTTP 402 Payment Required — no payment header found.');
+            process.exit(1);
+          }
         }
         return;
       }

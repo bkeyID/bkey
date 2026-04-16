@@ -24,3 +24,8 @@ export type {
   X402WalletInfo,
   SpendingLimit,
 } from './types.js';
+export type {
+  MppAuthorizeInput,
+  MppAuthorizeResponse,
+  MppPollResponse,
+} from './types.js';

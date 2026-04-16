@@ -14,6 +14,9 @@ import type {
   X402PollResponse,
   X402WalletInfo,
   SpendingLimit,
+  MppAuthorizeInput,
+  MppAuthorizeResponse,
+  MppPollResponse,
 } from './types.js';
 
 /**
@@ -464,5 +467,51 @@ export class BKey {
    */
   async getX402SpendingLimits(): Promise<{ limits: SpendingLimit[] }> {
     return (await this.request('GET', '/v1/x402/limits')) as { limits: SpendingLimit[] };
+  }
+
+  // ─── MPP (Stripe SPT Payments) ──────────────────────────────────
+
+  /**
+   * Authorize an MPP payment via Stripe Shared Payment Token.
+   */
+  async authorizeMppPayment(input: MppAuthorizeInput): Promise<MppAuthorizeResponse> {
+    return (await this.request('POST', '/v1/mpp/authorize', {
+      amountCents: input.amountCents,
+      currency: input.currency ?? 'USD',
+      paymentMethodId: input.paymentMethodId,
+      merchantName: input.merchantName,
+      description: input.description,
+      resource: input.resource,
+    })) as MppAuthorizeResponse;
+  }
+
+  /**
+   * Poll an MPP authorization until SPT is ready.
+   */
+  async pollMppAuthorization(
+    authorizationId: string,
+    opts?: { intervalMs?: number; timeoutMs?: number },
+  ): Promise<MppPollResponse> {
+    const intervalMs = opts?.intervalMs ?? 2000;
+    const timeoutMs = opts?.timeoutMs ?? 120_000;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const res = (await this.request(
+        'GET',
+        `/v1/mpp/authorize/${encodeURIComponent(authorizationId)}`,
+      )) as MppPollResponse;
+
+      if (res.status === 'authorized' && res.sptCredential) {
+        return res;
+      }
+      if (res.status === 'failed' || res.status === 'expired') {
+        throw new Error(`MPP authorization ${res.status}`);
+      }
+
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+
+    throw new Error('MPP authorization timed out');
   }
 }
