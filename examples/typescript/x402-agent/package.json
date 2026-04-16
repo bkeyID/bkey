@@ -1,0 +1,19 @@
+{
+  "name": "@bkey/example-x402-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/agent.ts",
+    "start": "node dist/agent.js"
+  },
+  "dependencies": {
+    "@bkey/sdk": "workspace:*",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
