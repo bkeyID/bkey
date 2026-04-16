@@ -9,6 +9,11 @@ import type {
   CibaTokenResponse,
   CheckoutRequestInput,
   StoreRequestInput,
+  X402AuthorizeInput,
+  X402AuthorizeResponse,
+  X402PollResponse,
+  X402WalletInfo,
+  SpendingLimit,
 } from './types.js';
 
 /**
@@ -379,5 +384,85 @@ export class BKey {
 
   async getCheckoutRequestStatus(id: string): Promise<unknown> {
     return this.request('GET', `/v1/checkout/${encodeURIComponent(id)}/status`);
+  }
+
+  // ─── x402 / MPP Payments ─────────────────────────────────────────
+
+  /**
+   * Authorize an x402 payment. If within the agent's spending limit,
+   * returns a signed payload immediately. Otherwise initiates CIBA
+   * biometric approval and returns a pending status to poll.
+   *
+   * @example
+   * ```ts
+   * const auth = await bkey.authorizeX402Payment({
+   *   amountCents: 100, // $1.00
+   *   recipientAddress: '0x...',
+   * });
+   * if (auth.status === 'authorized') {
+   *   // Use auth.authorization immediately
+   * } else {
+   *   // Poll for approval
+   *   const signed = await bkey.pollX402Authorization(auth.authorizationId!);
+   * }
+   * ```
+   */
+  async authorizeX402Payment(input: X402AuthorizeInput): Promise<X402AuthorizeResponse> {
+    return (await this.request('POST', '/v1/x402/authorize', {
+      amountCents: input.amountCents,
+      recipientAddress: input.recipientAddress,
+      chainId: input.chainId ?? 8453,
+      limitCurrency: input.limitCurrency ?? 'USD',
+      description: input.description,
+      resource: input.resource,
+    })) as X402AuthorizeResponse;
+  }
+
+  /**
+   * Poll an x402 authorization until the user approves on their phone
+   * and the signed payload is ready.
+   *
+   * @returns The signed payload (Base64) for use as PAYMENT-SIGNATURE header.
+   * @throws On denial, expiry, or timeout.
+   */
+  async pollX402Authorization(
+    authorizationId: string,
+    opts?: { intervalMs?: number; timeoutMs?: number },
+  ): Promise<X402PollResponse> {
+    const intervalMs = opts?.intervalMs ?? 2000;
+    const timeoutMs = opts?.timeoutMs ?? 120_000;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const res = (await this.request(
+        'GET',
+        `/v1/x402/authorize/${encodeURIComponent(authorizationId)}`,
+      )) as X402PollResponse;
+
+      if (res.status === 'signed' && res.signedPayload) {
+        return res;
+      }
+      if (res.status === 'failed' || res.status === 'expired') {
+        throw new Error(`x402 authorization ${res.status}`);
+      }
+
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+
+    throw new Error('x402 authorization timed out waiting for approval');
+  }
+
+  /**
+   * Get the agent's x402 payment wallet address on Base.
+   */
+  async getX402Wallet(): Promise<X402WalletInfo> {
+    return (await this.request('GET', '/v1/x402/wallet')) as X402WalletInfo;
+  }
+
+  /**
+   * Get the agent's x402 spending limits.
+   */
+  async getX402SpendingLimits(): Promise<{ limits: SpendingLimit[] }> {
+    return (await this.request('GET', '/v1/x402/limits')) as { limits: SpendingLimit[] };
   }
 }

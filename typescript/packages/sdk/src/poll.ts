@@ -88,3 +88,51 @@ export async function pollCheckoutRequest(
 
   throw new Error(`Checkout request timed out after ${timeoutMs / 1000}s.`);
 }
+
+// ─── x402 Payment Authorization Polling ──────────────────────────
+
+import type { X402PollResponse } from './types.js';
+
+/**
+ * Standalone poll for x402 payment authorization.
+ * Polls until the user approves on their phone and the signed payload is ready.
+ *
+ * @param apiUrl - BKey API base URL
+ * @param token - OAuth access token
+ * @param authorizationId - Authorization ID from POST /v1/x402/authorize
+ * @param timeoutMs - Maximum wait time (default: 120s)
+ * @returns Signed payload for use as PAYMENT-SIGNATURE header
+ */
+export async function pollX402Authorization(
+  apiUrl: string,
+  token: string,
+  authorizationId: string,
+  timeoutMs = 120_000,
+): Promise<X402PollResponse> {
+  const deadline = Date.now() + timeoutMs;
+  const url = `${apiUrl.replace(/\/$/, '')}/v1/x402/authorize/${encodeURIComponent(authorizationId)}`;
+
+  while (Date.now() < deadline) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`x402 poll error: ${res.status}`);
+    }
+
+    const data = (await res.json()) as X402PollResponse;
+
+    if (data.status === 'signed' && data.signedPayload) {
+      return data;
+    }
+    if (data.status === 'failed' || data.status === 'expired') {
+      throw new Error(`x402 authorization ${data.status}`);
+    }
+
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+
+  throw new Error(`x402 authorization timed out after ${timeoutMs / 1000}s`);
+}

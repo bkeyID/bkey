@@ -6,6 +6,13 @@ import { x25519 } from '@noble/curves/ed25519';
 import { requireConfig } from '../lib/config.js';
 import { BKey, pollAccessRequest } from '@bkey/sdk';
 
+/** Parse EIP-155 chain ID from x402 network field (e.g., 'eip155:8453' → 8453). */
+function parseChainId(network?: string): number {
+  if (!network) return 8453; // default: Base mainnet
+  const match = network.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : 8453;
+}
+
 // ─── E2EE helpers ───────────────────────────────────────────────────────────
 
 function generateEphemeralKeyPair(): { publicKey: Uint8Array; privateKey: Uint8Array } {
@@ -171,12 +178,94 @@ export const proxyCommand = new Command('proxy')
         signal: AbortSignal.timeout(60_000),
       });
 
+      // 7. Handle HTTP 402 — automatic x402/MPP payment
+      if (res.status === 402) {
+        const paymentRequiredHeader = res.headers.get('payment-required');
+        if (paymentRequiredHeader) {
+          console.error('\n💳 Payment required (x402). Initiating authorization...');
+          try {
+            const paymentRequired = JSON.parse(
+              Buffer.from(paymentRequiredHeader, 'base64').toString('utf-8'),
+            );
+
+            // Authorize via BKey x402 endpoint
+            const authRes = (await api.request('POST', '/v1/x402/authorize', {
+              amountCents: Math.ceil(Number(paymentRequired.maxAmountRequired) / 10_000),
+              recipientAddress: paymentRequired.payTo,
+              chainId: parseChainId(paymentRequired.network),
+              limitCurrency: 'USD',
+              description: paymentRequired.description ?? `Pay for ${url}`,
+              resource: paymentRequired.resource ?? url,
+            })) as { status: string; authorizationId?: string };
+
+            if (authRes.status === 'authorized' && (authRes as any).authorization) {
+              console.error('✅ Auto-approved. Retrying with payment...');
+              const signedPayload = Buffer.from(
+                JSON.stringify((authRes as any).authorization),
+              ).toString('base64');
+              const paidRes = await fetch(url, {
+                method: method.toUpperCase(),
+                headers: { ...resolvedHeaders, 'PAYMENT-SIGNATURE': signedPayload },
+                body: opts.data ?? undefined,
+                signal: AbortSignal.timeout(60_000),
+              });
+
+              const paidContentType = paidRes.headers.get('content-type') ?? '';
+              const paidBody = paidContentType.includes('json')
+                ? JSON.stringify(await paidRes.json(), null, 2)
+                : await paidRes.text();
+
+              process.stdout.write(paidBody);
+              if (!paidBody.endsWith('\n')) process.stdout.write('\n');
+
+              if (!paidRes.ok) process.exit(1);
+              return;
+            } else if (authRes.authorizationId) {
+              console.error('📱 Biometric approval required — check your phone.');
+
+              // Poll for the signed payload
+              const signed = await api.pollX402Authorization(
+                authRes.authorizationId,
+                { timeoutMs: 120_000 },
+              );
+
+              // Retry the original request with the payment signature
+              console.error('✅ Approved. Retrying with payment...');
+              const paidRes = await fetch(url, {
+                method: method.toUpperCase(),
+                headers: { ...resolvedHeaders, 'PAYMENT-SIGNATURE': signed.signedPayload! },
+                body: opts.data ?? undefined,
+                signal: AbortSignal.timeout(60_000),
+              });
+
+              const paidContentType = paidRes.headers.get('content-type') ?? '';
+              const paidBody = paidContentType.includes('json')
+                ? JSON.stringify(await paidRes.json(), null, 2)
+                : await paidRes.text();
+
+              process.stdout.write(paidBody);
+              if (!paidBody.endsWith('\n')) process.stdout.write('\n');
+
+              if (!paidRes.ok) process.exit(1);
+              return;
+            }
+          } catch (payErr) {
+            console.error(`x402 payment failed: ${(payErr as Error).message}`);
+            process.exit(1);
+          }
+        } else {
+          console.error('HTTP 402 Payment Required — no PAYMENT-REQUIRED header found.');
+          process.exit(1);
+        }
+        return;
+      }
+
+      // 8. Output response for non-402 responses
       const contentType = res.headers.get('content-type') ?? '';
       const body = contentType.includes('json')
         ? JSON.stringify(await res.json(), null, 2)
         : await res.text();
 
-      // 7. Output ONLY the response — secrets never printed
       process.stdout.write(body);
       if (!body.endsWith('\n')) process.stdout.write('\n');
 

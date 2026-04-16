@@ -100,3 +100,76 @@ export interface CheckoutStatus {
   completedAt: string | null;
   expiresAt: string;
 }
+
+// ─── x402 / MPP Payments ─────────────────────────────────────────
+
+export interface X402AuthorizeInput {
+  /** Amount in smallest currency unit (e.g. USD cents). */
+  amountCents: number;
+  /** Recipient EVM wallet address. */
+  recipientAddress: string;
+  /** EVM chain ID (default: 8453 = Base). */
+  chainId?: number;
+  /** Currency for limit check (default: 'USD'). */
+  limitCurrency?: string;
+  /** Human-readable description shown on approval screen. */
+  description?: string;
+  /** Resource URL this payment is for. */
+  resource?: string;
+}
+
+export interface X402AuthorizeResponse {
+  /** 'authorized' (signed immediately) or 'pending_approval' (CIBA initiated). */
+  status: 'authorized' | 'pending_approval';
+  /** Present when status = 'authorized'. */
+  authorization?: X402SignedPayload;
+  /** Present when status = 'pending_approval'. */
+  authReqId?: string;
+  authorizationId?: string;
+  expiresIn?: number;
+  interval?: number;
+  message?: string;
+}
+
+export interface X402PollResponse {
+  id: string;
+  status: 'pending' | 'signed' | 'settled' | 'expired' | 'failed';
+  /** Base64-encoded signed payload — use as PAYMENT-SIGNATURE header. */
+  signedPayload?: string;
+  /** Wallet address that signed the authorization. */
+  fromAddress?: string;
+  requiresBiometricApproval?: boolean;
+}
+
+export interface X402SignedPayload {
+  signature: string;
+  from: string;
+  to: string;
+  value: string;
+  validAfter: number;
+  validBefore: number;
+  nonce: string;
+  contractAddress: string;
+  chainId: number;
+  authorizationId: string;
+  authorizationType: string;
+}
+
+export interface X402WalletInfo {
+  address: string;
+  chainId: number;
+  network: string;
+  asset: string;
+  usdcContract: string;
+}
+
+export interface SpendingLimit {
+  id: string;
+  agentDid: string;
+  dailyLimitAmount: number;
+  monthlyLimitAmount: number;
+  maxPerTransaction?: number;
+  limitCurrency: string;
+  dailySpent: number;
+  monthlySpent: number;
+}

@@ -15,3 +15,12 @@ export type {
   CheckoutRequestInput,
   CheckoutStatus,
 } from './types.js';
+export { pollX402Authorization } from './poll.js';
+export type {
+  X402AuthorizeInput,
+  X402AuthorizeResponse,
+  X402PollResponse,
+  X402SignedPayload,
+  X402WalletInfo,
+  SpendingLimit,
+} from './types.js';

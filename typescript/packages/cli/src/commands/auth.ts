@@ -147,7 +147,7 @@ authCommand
   .description('Create an OAuth client for agent/CI use (requires prior login)')
   .option('--base-url <url>', 'BKey base URL (overrides saved config)')
   .option('--name <name>', 'Client name', 'My Agent')
-  .option('--scopes <scopes>', 'Comma-separated scopes', 'vault:access,vault:store,signing:create,signing:read,identity:read,approve:action,approve:payment')
+  .option('--scopes <scopes>', 'Comma-separated scopes', 'vault:access,vault:store,signing:create,signing:read,identity:read,approve:action,approve:payment,x402:authorize,x402:address,x402:limits')
   .option('--json', 'Output credentials as JSON (for scripting)')
   .option('--save', 'Save credentials to ~/.bkey/agent.json for persistent agent mode')
   .action(async (opts: { baseUrl?: string; name: string; scopes: string; json?: boolean; save?: boolean }) => {
