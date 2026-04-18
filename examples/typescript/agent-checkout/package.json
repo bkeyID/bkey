@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bkey/sdk": "^0.1.0"
+    "@bkey/sdk": "^0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
