@@ -1,6 +1,6 @@
 {
   "name": "@bkey/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "BKey SDK — biometric approval, vault, and checkout for AI agents",
   "type": "module",
   "main": "dist/index.js",
