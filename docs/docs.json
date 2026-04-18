@@ -27,6 +27,7 @@
             "group": "Authentication",
             "pages": [
               "authentication/overview",
+              "authentication/integrating-bkey",
               "authentication/client-credentials",
               "authentication/device-authorization",
               "authentication/ciba"
