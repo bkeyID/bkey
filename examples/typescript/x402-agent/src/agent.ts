@@ -87,7 +87,11 @@ async function main() {
   // notification to the user's phone for biometric approval.
   console.log('Submitting payment authorization to BKey...');
   const amountCents = Math.ceil(amountUsdc * 100);
-  const chainId = parseInt(paymentRequired.network?.match(/(\d+)/)?.[1] ?? '8453', 10);
+  // CAIP-2 network → chain id (e.g. 'eip155:8453' → 8453).
+  // A naive /(\d+)/ match would pick up '155' from 'eip155' — split on ':' and
+  // take the reference portion.
+  const chainIdParts = String(paymentRequired.network ?? 'eip155:8453').split(':');
+  const chainId = parseInt(chainIdParts[chainIdParts.length - 1], 10) || 8453;
 
   const auth = await bkey.authorizeX402Payment({
     amountCents,

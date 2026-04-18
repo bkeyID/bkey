@@ -35,10 +35,11 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/x402-payments",
+              "guides/encryption",
               "guides/agent-checkout",
               "guides/vault-secrets",
-              "guides/mcp-integration",
-              "guides/x402-payments"
+              "guides/mcp-integration"
             ]
           }
         ]

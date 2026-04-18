@@ -100,14 +100,16 @@ import type { X402PollResponse } from './types.js';
  * @param apiUrl - BKey API base URL
  * @param token - OAuth access token
  * @param authorizationId - Authorization ID from POST /v1/x402/authorize
- * @param timeoutMs - Maximum wait time (default: 120s)
+ * @param timeoutMs - Maximum wait time (default: 300s — matches the CIBA
+ *                    approval request lifetime, so we don't give up while
+ *                    the phone prompt is still live)
  * @returns Signed payload for use as PAYMENT-SIGNATURE header
  */
 export async function pollX402Authorization(
   apiUrl: string,
   token: string,
   authorizationId: string,
-  timeoutMs = 120_000,
+  timeoutMs = 300_000,
 ): Promise<X402PollResponse> {
   const deadline = Date.now() + timeoutMs;
   const url = `${apiUrl.replace(/\/$/, '')}/v1/x402/authorize/${encodeURIComponent(authorizationId)}`;

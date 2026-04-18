@@ -1,15 +1,16 @@
 {
-  "name": "@bkey/example-x402-agent",
+  "name": "@bkey/example-vault-access",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/agent.ts",
-    "start": "node dist/agent.js"
+    "dev": "tsx src/access.ts",
+    "start": "node dist/access.js"
   },
   "dependencies": {
     "@bkey/sdk": "^0.1.0",
+    "@noble/curves": "^1.6.0",
     "dotenv": "^16.4.0"
   },
   "devDependencies": {

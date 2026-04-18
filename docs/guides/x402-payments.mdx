@@ -1,6 +1,6 @@
 ---
 title: Agent Payments
-description: Enable AI agents to make payments using x402 (crypto) and MPP (fiat) protocols with biometric approval.
+description: Let your AI agent pay for APIs and services — BKey auto-detects whether the merchant speaks x402 (USDC on-chain) or MPP (Stripe fiat) and picks the right protocol for you.
 ---
 
 # Agent Payments
@@ -32,103 +32,189 @@ Both x402 and MPP use the HTTP 402 pattern, but they serve different purposes:
 | Enterprise audit trails and spend policies | **MPP** | SPTs are scoped, time-limited, auditable |
 | Crypto-native agent ecosystem | **x402** | Native on-chain, no intermediary |
 
-## Quick start
+## Super-simple integration — pick your path
 
-### 1. Install and authenticate
+Three entry points. All of them **auto-detect** the protocol from the 402 response, so your agent never has to know whether the merchant speaks x402 or MPP.
+
+| Entry point | What you write | When to use |
+|---|---|---|
+| [BKey skill](https://github.com/bkeyID/bkey/tree/main/skills/bkey) for Claude Code / MCP | Nothing. The skill runs `bkey proxy` transparently. | Building a Claude Code / MCP agent. |
+| `bkey proxy` CLI | `bkey proxy GET https://api.foo.com/premium` | Any language, any agent, zero code change. |
+| `@bkey/sdk` / `bkey-sdk` | A few lines around your existing `fetch`. | You want programmatic control over auto-approve vs biometric prompt. |
+
+### Path A — Zero-code (CLI proxy)
 
 ```bash
+# One-time setup
 npm install -g @bkey/cli
 bkey auth login
 bkey auth setup-agent --name "My Agent" --save
+
+# Agent hits any paid API — BKey figures out the rest
+bkey proxy GET https://weather-premium.example.com/forecast/SFO
 ```
 
-The `setup-agent` command creates OAuth credentials with payment scopes (`payment:authorize`, `payment:address`, `payment:limits`) included by default. These scopes cover both x402 and MPP.
+Example session:
 
-### 2. Zero-code: Use the CLI proxy
-
-The simplest way to add payment support to any agent:
-
-```bash
-bkey proxy GET https://api.example.com/premium/data \
-  --header "Authorization: Bearer {vault:api-key}"
+```
+$ bkey proxy GET https://weather-premium.example.com/forecast/SFO
+💳 Payment required (x402). Initiating authorization...
+✅ Auto-approved. Retrying with payment...
+{"city":"SFO","forecast":"sunny","tempF":68}
 ```
 
-The proxy automatically:
-1. Detects 402 responses (checks for both `PAYMENT-REQUIRED` and `X-Payment-Required` headers)
-2. Determines the protocol (x402 or MPP) from the header format
-3. Authorizes the payment through BKey
-4. Sends a push notification for biometric approval (if above spending limit)
-5. Retries the request with the signed payment credential
+If the payment needs biometric approval, the CLI prints `📱 Biometric approval required — check your phone.` and waits. You can combine vault-backed headers too: `bkey proxy GET <url> --header "Authorization: Bearer {vault:api-key}"`.
 
-### 3. SDK integration
+### Path B — Programmatic (TypeScript SDK)
 
-For programmatic control, use the `@bkey/sdk`:
-
-```bash
-npm install @bkey/sdk
-```
-
-#### x402 (USDC on-chain)
+One reusable `paidFetch()` wrapper handles both protocols. Drop it anywhere you use `fetch`:
 
 ```typescript
 import { BKey } from '@bkey/sdk';
 
 const bkey = new BKey({
   apiUrl: 'https://api.bkey.id',
-  clientId: process.env.BKEY_CLIENT_ID,
-  clientSecret: process.env.BKEY_CLIENT_SECRET,
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
 });
 
-// Authorize a payment
-const auth = await bkey.authorizeX402Payment({
-  amountCents: 100,                              // $1.00
-  recipientAddress: '0x1234...abcd',             // merchant wallet
-  chainId: 8453,                                 // Base mainnet
-  description: 'API access for /premium/data',
-});
+async function paidFetch(url: string, init?: RequestInit): Promise<Response> {
+  let res = await fetch(url, init);
+  if (res.status !== 402) return res;
 
-if (auth.status === 'authorized') {
-  // Auto-approved — within spending limits
-  const payload = Buffer.from(
-    JSON.stringify(auth.authorization)
-  ).toString('base64');
+  // Auto-detect: x402 first, then MPP.
+  const x402 = res.headers.get('payment-required');
+  const mpp = res.headers.get('x-payment-required');
 
-  // Retry with payment
-  await fetch(targetUrl, {
-    headers: { 'PAYMENT-SIGNATURE': payload },
-  });
-} else {
-  // Biometric approval required — user gets a push notification
-  const signed = await bkey.pollX402Authorization(auth.authorizationId);
-  await fetch(targetUrl, {
-    headers: { 'PAYMENT-SIGNATURE': signed.signedPayload },
-  });
+  if (x402) {
+    const need = JSON.parse(Buffer.from(x402, 'base64').toString());
+    // CAIP-2 network → chain id (e.g. 'eip155:8453' → 8453).
+    const parts = String(need.network ?? 'eip155:8453').split(':');
+    const chainId = parseInt(parts[parts.length - 1], 10) || 8453;
+
+    const auth = await bkey.authorizeX402Payment({
+      amountCents: Math.ceil(Number(need.maxAmountRequired) / 10_000),
+      recipientAddress: need.payTo,
+      chainId,
+      description: need.description,
+      resource: need.resource ?? url,
+    });
+
+    const signed = auth.status === 'authorized' && auth.authorization
+      ? Buffer.from(JSON.stringify(auth.authorization)).toString('base64')
+      : (await bkey.pollX402Authorization(auth.authorizationId!)).signedPayload!;
+
+    return fetch(url, {
+      ...init,
+      headers: { ...init?.headers, 'PAYMENT-SIGNATURE': signed },
+    });
+  }
+
+  if (mpp) {
+    const need = JSON.parse(mpp);
+    const auth = await bkey.authorizeMppPayment({
+      amountCents: need.amount ?? need.maxAmount,
+      currency: need.currency ?? 'USD',
+      paymentMethodId: need.paymentMethodId,
+      merchantName: need.merchantName,
+      description: need.description,
+    });
+
+    const sptId = auth.status === 'authorized' && auth.sptId
+      ? auth.sptId
+      : JSON.parse(
+          Buffer.from(
+            (await bkey.pollMppAuthorization(auth.authorizationId!)).sptCredential!,
+            'base64',
+          ).toString(),
+        ).sptId;
+
+    // Present the SPT in whatever format the merchant's MPP endpoint expects
+    // — most accept it as a JSON body field. See the merchant's MPP docs.
+    return fetch(url, {
+      ...init,
+      method: init?.method ?? 'POST',
+      headers: { ...init?.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shared_payment_granted_token: sptId }),
+    });
+  }
+
+  throw new Error('402 without a payment header we understand');
 }
+
+// Now use it like any fetch — agent doesn't know or care about protocols:
+const weather = await paidFetch('https://weather-premium.example.com/forecast/SFO');
+console.log(await weather.json());
 ```
 
-#### MPP (Stripe fiat)
+### Path C — Python (shell out to the CLI)
 
-```typescript
-const auth = await bkey.authorizeMppPayment({
-  amountCents: 500,                    // $5.00
-  currency: 'USD',
-  paymentMethodId: 'pm-uuid-here',    // user's saved card
-  merchantName: 'Example API',
-});
+Python mirrors the same detect-first logic. The idiomatic pattern is to delegate to the CLI:
 
-if (auth.status === 'authorized') {
-  // SPT ready — present to merchant
-  await fetch(targetUrl, {
-    headers: {
-      'payment_method_data[shared_payment_granted_token]': auth.sptId,
-    },
-  });
-} else {
-  const result = await bkey.pollMppAuthorization(auth.authorizationId);
-  const spt = JSON.parse(Buffer.from(result.sptCredential, 'base64').toString());
-  // Use spt.sptId with the merchant
-}
+```python
+import subprocess, json
+
+# Pure Python — delegate the whole payment loop to the CLI
+result = subprocess.run(
+    ["bkey", "proxy", "GET", url],
+    check=True, capture_output=True, text=True,
+)
+data = json.loads(result.stdout)
 ```
+
+For a fully programmatic Python version, see [`examples/python/agent-checkout`](https://github.com/bkeyID/bkey/tree/main/examples/python/agent-checkout).
+
+## How auto-detection works
+
+Inside the CLI proxy, the skill, and the SDK's authorize methods, BKey inspects the 402 response and picks the right protocol:
+
+```
+HTTP 402 ─┬─ PAYMENT-REQUIRED header present?  ─────▶ x402 (USDC)
+          │
+          └─ X-Payment-Required header present? ────▶ MPP (Stripe)
+```
+
+Selection order:
+1. **x402 first**, if advertised. No percentage fee, fast finality.
+2. **MPP second**, if x402 isn't advertised but MPP is.
+3. **Fail** if neither header is present.
+
+### Per-transaction cost
+
+A 10–100x difference at typical microtransaction amounts:
+
+| Amount | x402 cost | MPP (Stripe) cost |
+|---|---|---|
+| $0.10 call | ~$0.001 gas | ~$0.30 Stripe minimum |
+| $1 call | ~$0.001 | $0.33 (2.9% + $0.30) |
+| $10 call | ~$0.001 | $0.59 |
+| $100 call | ~$0.001 | $3.20 |
+
+x402 has no percentage fee. USDC is 1:1 with USD, no FX loss. Settlement is final in ~2 seconds on Base. For pay-per-call APIs and microtransactions, x402 is almost always cheaper — which is why the proxy picks it when both are on offer.
+
+## Under the hood
+
+### x402 path
+
+1. Agent makes a request → server returns `HTTP 402` with `PAYMENT-REQUIRED: <base64 JSON>`.
+2. BKey decodes: `{ maxAmountRequired, payTo, network, description, resource }`.
+3. BKey calls `POST /v1/x402/authorize` with the amount + recipient.
+4. If within the per-agent spending limit → **auto-approved**, BKey signs an **EIP-3009 `ReceiveWithAuthorization`** payload with the user's on-device secp256k1 key.
+5. If above the limit → BKey sends a **biometric push**; after Face ID, the same signed payload is produced.
+6. Agent retries with `PAYMENT-SIGNATURE: <base64 EIP-3009>`.
+7. Server verifies via the Coinbase facilitator, settles on-chain, returns the resource.
+
+### MPP path
+
+1. Agent makes a request → server returns `HTTP 402` with `X-Payment-Required: <JSON>`.
+2. BKey decodes: `{ amount, currency, paymentMethodId, merchantName, description }`.
+3. BKey calls `POST /v1/mpp/authorize` with the amount + payment method.
+4. Auto-approved or biometric (same rules as x402).
+5. BKey returns a **Shared Payment Token** (SPT) scoped to this merchant + amount.
+6. Agent retries presenting the SPT in whatever format the merchant expects (typically a JSON body field).
+7. Merchant captures via standard Stripe APIs.
+
+The user's private key never leaves the phone in either path — BKey is a courier for the signed authorization, not a custodian of funds.
 
 ## Spending limits
 
@@ -151,17 +237,6 @@ const wallet = await bkey.getX402Wallet();
 console.log(`Wallet: ${wallet.address} (${wallet.asset} on ${wallet.network})`);
 ```
 
-## How 402 detection works
-
-The CLI proxy detects payment requirements from the HTTP response headers:
-
-| Header | Protocol | Payment method |
-|--------|----------|---------------|
-| `PAYMENT-REQUIRED` | x402 | USDC on-chain (EIP-3009 signed authorization) |
-| `X-Payment-Required` | MPP | Stripe Shared Payment Token (fiat or stablecoin) |
-
-When both headers are present, x402 is preferred (lower fees, faster settlement).
-
 ## OAuth scopes
 
 Agent payment capabilities are controlled by three protocol-neutral scopes:
@@ -179,6 +254,14 @@ These scopes are included by default when running `bkey auth setup-agent`.
 - **Private keys never leave the phone** — payments are signed on-device using biometric-derived keys
 - **Spending limits** prevent unauthorized charges — configurable per agent, per protocol
 - **CIBA biometric approval** ensures human-in-the-loop for large payments
-- **EIP-3009 ReceiveWithAuthorization** (x402) prevents front-running by requiring the recipient to submit the transaction
+- **EIP-3009 `ReceiveWithAuthorization`** (x402) prevents front-running by requiring the recipient to submit the transaction
 - **Scoped SPTs** (MPP) are merchant-locked, time-limited, and amount-capped
 - **Short validity windows** (< 5 minutes) limit exposure of signed payloads
+
+See the [encryption guide](/guides/encryption) for how payload secrecy is enforced end-to-end.
+
+## See also
+
+- [CIBA protocol](/authentication/ciba) — the biometric approval primitive underneath both x402 and MPP
+- [CLI reference](/sdk/cli) — `bkey proxy`, `bkey wrap`, and other commands
+- [`x402-agent` example](https://github.com/bkeyID/bkey/tree/main/examples/typescript/x402-agent) — end-to-end agent code

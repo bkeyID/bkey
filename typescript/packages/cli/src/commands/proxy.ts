@@ -9,8 +9,13 @@ import { BKey, pollAccessRequest } from '@bkey/sdk';
 /** Parse EIP-155 chain ID from x402 network field (e.g., 'eip155:8453' → 8453). */
 function parseChainId(network?: string): number {
   if (!network) return 8453; // default: Base mainnet
-  const match = network.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 8453;
+  // CAIP-2 format: namespace:reference (e.g., 'eip155:8453'). The chain ID is
+  // the *reference*, not the first run of digits — a naive /(\d+)/ match would
+  // pick up '155' from 'eip155'. Split and take the part after the namespace.
+  const parts = network.split(':');
+  const ref = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+  const n = parseInt(ref ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 8453;
 }
 
 // ─── E2EE helpers ───────────────────────────────────────────────────────────
@@ -39,6 +44,59 @@ function decryptE2EE(e2eeCiphertext: string, ephemeralPrivateKey: Uint8Array): s
   const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
   return decrypted.toString('utf8');
+}
+
+// ─── MPP SPT retry helper ───────────────────────────────────────────────────
+
+/**
+ * Build a RequestInit that carries the MPP Shared Payment Token in both a
+ * custom `X-Payment-Spt` header and — for methods that carry a body — in a
+ * JSON body field. This is belt-and-braces: MPP's merchant-facing wire
+ * format is still settling, so we present the SPT both ways rather than
+ * guessing one. Merchants reading from either location get the token.
+ */
+function mergeSptIntoRequest(
+  req: { method: string; headers: Record<string, string>; body?: string },
+  sptId: string,
+): RequestInit {
+  const hasBody = !['GET', 'HEAD', 'DELETE', 'OPTIONS'].includes(req.method.toUpperCase());
+  const headers: Record<string, string> = {
+    ...req.headers,
+    'X-Payment-Spt': sptId,
+  };
+
+  if (!hasBody) {
+    return { method: req.method, headers, signal: AbortSignal.timeout(60_000) };
+  }
+
+  // Merge SPT into an existing JSON body if present; otherwise start fresh.
+  let bodyObj: Record<string, unknown> = {};
+  if (req.body) {
+    try {
+      const parsed = JSON.parse(req.body) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        bodyObj = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Non-JSON body — leave body untouched; the merchant must read the header.
+      return {
+        method: req.method,
+        headers,
+        body: req.body,
+        signal: AbortSignal.timeout(60_000),
+      };
+    }
+  }
+
+  bodyObj.shared_payment_granted_token = sptId;
+  headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';
+
+  return {
+    method: req.method,
+    headers,
+    body: JSON.stringify(bodyObj),
+    signal: AbortSignal.timeout(60_000),
+  };
 }
 
 // ─── vault placeholder regex ────────────────────────────────────────────────
@@ -94,16 +152,12 @@ export const proxyCommand = new Command('proxy')
     const api = new BKey(config);
     const headers = opts.header ?? [];
 
-    // 1. Parse {vault:xxx} placeholders from headers
+    // 1. Parse {vault:xxx} placeholders from headers. With no placeholders we
+    //    skip straight to the HTTP request — the 402 auto-payment flow below
+    //    still runs. Vault injection and payment authorization are independent.
     const refs = parseVaultRefs(headers);
-
-    if (refs.length === 0) {
-      console.error('No {vault:...} placeholders found in headers. Use --header "Authorization: Bearer {vault:my-key}"');
-      process.exit(1);
-    }
-
-    // 2. For each unique vault item, generate ephemeral key and request access
     const resolvedValues = new Map<string, string>();
+
     const parsedTimeout = parseInt(opts.timeout, 10);
     if (isNaN(parsedTimeout) || parsedTimeout <= 0) {
       console.error(`Invalid timeout: "${opts.timeout}". Must be a positive number of seconds.`);
@@ -111,6 +165,7 @@ export const proxyCommand = new Command('proxy')
     }
     const timeoutMs = parsedTimeout * 1000;
 
+    // 2. For each unique vault item, generate ephemeral key and request access
     for (const ref of refs) {
       const { publicKey, privateKey } = generateEphemeralKeyPair();
 
@@ -223,10 +278,10 @@ export const proxyCommand = new Command('proxy')
             } else if (authRes.authorizationId) {
               console.error('📱 Biometric approval required — check your phone.');
 
-              // Poll for the signed payload
+              // Poll for the signed payload (respect --timeout)
               const signed = await api.pollX402Authorization(
                 authRes.authorizationId,
-                { timeoutMs: 120_000 },
+                { timeoutMs },
               );
 
               // Retry the original request with the payment signature
@@ -270,17 +325,19 @@ export const proxyCommand = new Command('proxy')
                 resource: url,
               })) as { status: string; sptId?: string; authorizationId?: string; expiresAt?: string };
 
+              // MPP retries: present the SPT in both an `X-Payment-Spt` header
+              // and (for body-carrying methods) a JSON body field, so we work
+              // whether the merchant reads from headers or body. The Stripe
+              // form-field name `payment_method_data[shared_payment_granted_token]`
+              // is not a valid HTTP header name (brackets fail WHATWG Fetch),
+              // so we use a clean header and mirror the value in the body.
               if (mppAuthRes.status === 'authorized' && mppAuthRes.sptId) {
                 console.error('✅ Auto-approved. Retrying with SPT...');
-                const paidRes = await fetch(url, {
+                const paidRes = await fetch(url, mergeSptIntoRequest({
                   method: method.toUpperCase(),
-                  headers: {
-                    ...resolvedHeaders,
-                    'payment_method_data[shared_payment_granted_token]': mppAuthRes.sptId,
-                  },
-                  body: opts.data ?? undefined,
-                  signal: AbortSignal.timeout(60_000),
-                });
+                  headers: resolvedHeaders,
+                  body: opts.data,
+                }, mppAuthRes.sptId));
 
                 const paidBody = (paidRes.headers.get('content-type') ?? '').includes('json')
                   ? JSON.stringify(await paidRes.json(), null, 2)
@@ -291,19 +348,15 @@ export const proxyCommand = new Command('proxy')
                 return;
               } else if (mppAuthRes.authorizationId) {
                 console.error('📱 Biometric approval required — check your phone.');
-                const mppSigned = await api.pollMppAuthorization(mppAuthRes.authorizationId, { timeoutMs: 120_000 });
+                const mppSigned = await api.pollMppAuthorization(mppAuthRes.authorizationId, { timeoutMs });
 
                 console.error('✅ Approved. Retrying with SPT...');
                 const sptData = JSON.parse(Buffer.from(mppSigned.sptCredential!, 'base64').toString());
-                const paidRes = await fetch(url, {
+                const paidRes = await fetch(url, mergeSptIntoRequest({
                   method: method.toUpperCase(),
-                  headers: {
-                    ...resolvedHeaders,
-                    'payment_method_data[shared_payment_granted_token]': sptData.sptId,
-                  },
-                  body: opts.data ?? undefined,
-                  signal: AbortSignal.timeout(60_000),
-                });
+                  headers: resolvedHeaders,
+                  body: opts.data,
+                }, sptData.sptId));
 
                 const paidBody = (paidRes.headers.get('content-type') ?? '').includes('json')
                   ? JSON.stringify(await paidRes.json(), null, 2)

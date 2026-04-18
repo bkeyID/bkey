@@ -433,7 +433,9 @@ export class BKey {
     opts?: { intervalMs?: number; timeoutMs?: number },
   ): Promise<X402PollResponse> {
     const intervalMs = opts?.intervalMs ?? 2000;
-    const timeoutMs = opts?.timeoutMs ?? 120_000;
+    // Default matches the CIBA approval request lifetime (5 min) so we don't
+    // stop polling while the phone prompt is still live. Callers can override.
+    const timeoutMs = opts?.timeoutMs ?? 300_000;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
@@ -493,7 +495,9 @@ export class BKey {
     opts?: { intervalMs?: number; timeoutMs?: number },
   ): Promise<MppPollResponse> {
     const intervalMs = opts?.intervalMs ?? 2000;
-    const timeoutMs = opts?.timeoutMs ?? 120_000;
+    // Default matches the CIBA approval request lifetime (5 min) so we don't
+    // stop polling while the phone prompt is still live. Callers can override.
+    const timeoutMs = opts?.timeoutMs ?? 300_000;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {

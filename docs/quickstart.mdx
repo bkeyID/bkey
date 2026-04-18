@@ -74,15 +74,13 @@ if (result.approved) {
 ```
 
 ```python Python
-# Request biometric approval
-result = client.initiate_approval(
-    scope="approve:actions",
-    binding_message="Deploy to production",
+# One call: initiates CIBA, sends push, polls until approved/denied.
+result = client.approve(
+    message="Deploy to production",
+    user_did="did:bkey:...",
+    scope="approve:action",
 )
-
-# Wait for user to approve on their phone
-approval = client.poll_approval(result.auth_req_id)
-print(approval.status)  # "approved"
+# result.access_token is a short-lived EdDSA JWT proving consent.
 ```
 
 ```bash CLI
@@ -117,8 +115,9 @@ if (result.approved) {
 
 ## Next Steps
 
+- [Agent Payments](/guides/agent-payments) — let your agent pay for APIs (auto-detects x402 vs MPP)
 - [CIBA Deep Dive](/authentication/ciba) — understand the core approval flow
+- [Encryption](/guides/encryption) — what protects each step, end-to-end
+- [MCP Integration](/guides/mcp-integration) — gate MCP tool calls with biometric approval
 - [Authentication Overview](/authentication/overview) — all OAuth flows
-- [Agent Checkout Guide](/guides/agent-checkout) — build an agentic checkout
-- [Vault Secrets Guide](/guides/vault-secrets) — store and retrieve secrets
 - [API Reference](/api-reference/overview) — full endpoint documentation

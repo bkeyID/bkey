@@ -28,6 +28,38 @@ A single MCP tool:
 
 The deploy itself is a stub — replace `runDeploy()` in `src/index.ts` with your real pipeline call (GitHub Actions dispatch, `kubectl apply`, Terraform run, etc.).
 
+## The pattern works for any sensitive action
+
+`deploy_to_production` is one concrete example. The three-line pattern at the heart of it — `approve(...)` → `verifyToken(...)` → run the action — is the universal BKey primitive. Use it anywhere you need cryptographic proof of human consent:
+
+| Tool you're writing | Scope | Binding message | Action details |
+|---|---|---|---|
+| `refund_customer` | `approve:payment` | `"Refund $29.99 to customer@example.com"` | `{ type, amount, currency, recipient }` |
+| `drop_table` | `approve:action` | `"Drop users_archive (irreversible)"` | `{ type: 'db', resource: 'users_archive' }` |
+| `grant_admin_role` | `approve:action` | `"Grant admin to alice@corp"` | `{ type: 'admin', recipient: 'alice@corp' }` |
+| `rotate_api_key` | `approve:action` | `"Rotate prod Stripe key"` | `{ type, resource: 'stripe_prod' }` |
+| `approve_checkout` | `approve:payment` | `"Pay $9.99 at Example Store"` | `{ type, amount, currency }` |
+
+In every case the code is the same shape:
+
+```typescript
+const approval = await bkey.approve(bindingMessage, {
+  scope: 'approve:<action>',
+  actionDetails,
+  expirySeconds: 300,
+});
+if (!approval.approved) return denied();
+
+const claims = await verifyToken(approval.accessToken, {
+  issuer: BKEY_ISSUER,
+  scope: 'approve:<action>',
+});
+
+await runAction({ approvedBy: claims.sub, jti: claims.jti });
+```
+
+One scope per action. One JTI per approval. Replay-resistant by default.
+
 ## Setup
 
 This example installs `@bkey/sdk` and `@bkey/node` straight from npm — it's a standalone package you can copy out of the monorepo unchanged.

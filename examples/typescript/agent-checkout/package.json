@@ -1,12 +1,12 @@
 {
-  "name": "@bkey/example-x402-agent",
+  "name": "@bkey/example-agent-checkout",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/agent.ts",
-    "start": "node dist/agent.js"
+    "dev": "tsx src/checkout.ts",
+    "start": "node dist/checkout.js"
   },
   "dependencies": {
     "@bkey/sdk": "^0.1.0",
