@@ -1,93 +1,79 @@
-# Python agent-checkout example
+# BKey agent-checkout example (Python)
 
-End-to-end example of a Python agent that initiates a checkout and waits for the user to approve it biometrically on their phone.
+An agent-initiated purchase flow: a Python agent calls `checkout_request()`, BKey pushes a biometric approval to the user's phone, and the agent blocks until the user approves or rejects. On approval, the returned `payment_intent_id` is ready to hand to your payment processor.
 
-Also shows the **generic one-line CIBA approval** pattern — the same pattern you'd use to gate a deploy, refund, admin action, or any sensitive operation.
+Today, agents that spend money on behalf of a user either (a) hold long-lived credentials and hope nothing gets MitMed, or (b) surface a soft confirm dialog that anyone with the agent open can click through. This example replaces that with a **signed, biometrically bound, per-action** approval:
 
-## What you'll see
+```
+agent calls checkout_request(merchant, amount, items)
+  └─> BKey pushes a prompt to the user's phone
+        └─> user approves with facial biometrics
+              └─> checkout_poll() unblocks with status=approved + payment_intent_id
+                    └─> agent hands payment_intent_id to Stripe / etc.
+```
 
-1. **Generic approval** — `client.approve("Deploy to prod", user_did=..., scope="approve:deploy")` — one call, biometric-gated, returns a signed JWT.
-2. **Structured checkout** — `client.checkout_request(...)` → `client.checkout_poll(...)` — same CIBA primitive, with checkout-specific fields rendered on the user's phone (merchant, items, amount).
+Every purchase produces an auditable record: who approved, when, for what cart.
 
-## Quickstart
+## Setup
+
+This example installs `bkey-sdk` straight from PyPI — it's a standalone package you can copy out of the monorepo unchanged.
 
 ```bash
-# 1. Clone and enter the example
 cd examples/python/agent-checkout
-
-# 2. Create your agent credentials (once)
-npm install -g @bkey/cli
-bkey auth login                     # QR-code device auth
-bkey auth setup-agent --name "Checkout Demo" --save
-
-# 3. Install the SDK
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 4. Configure
-cp .env.example .env
-# Edit .env: BKEY_CLIENT_ID, BKEY_CLIENT_SECRET, BKEY_USER_DID
-
-# 5. Run
-python checkout.py
+uv venv
+uv pip install -e .
 ```
 
-You'll see a push notification on the phone associated with `BKEY_USER_DID`. Approve with Face ID. The script prints the approved checkout's payment intent.
+Create a `.env` file next to `pyproject.toml` (copy from `.env.example`) and fill in:
 
-## How the code works
-
-### Part 1 — Generic one-line approval
-
-```python
-result = client.approve(
-    message="Proceed with test action",
-    user_did=BKEY_USER_DID,
-    scope="approve:action",
-)
-```
-
-That's it. One call:
-- Initiates a CIBA request at `POST /oauth/bc-authorize`
-- Sends the push notification to `BKEY_USER_DID`
-- Polls `POST /oauth/token` until the user approves or denies
-- Returns a `CIBAResult` with `access_token` — an EdDSA-signed JWT
-
-You get back a short-lived, scoped proof of consent. Verify it server-side before acting on it (see `verify_token.py` in a real production app — the raw HTTP verification is straightforward against the `/oauth/jwks` endpoint).
-
-### Part 2 — Checkout
-
-`checkout_request()` is a thin wrapper around the same CIBA primitive. It adds merchant name, line items, amount, and currency to the approval screen so the user sees a shopping-cart-shaped prompt, not a plain text approval.
-
-```python
-checkout = client.checkout_request(
-    merchant_name="BKey Demo Store",
-    items=[{"name": "Widget", "price": 9.99, "quantity": 1}],
-    amount=9.99,
-    currency="USD",
-)
-result = client.checkout_poll(checkout.id)
-if result.status == "completed":
-    print(f"Payment intent: {result.payment_intent_id}")
-```
-
-## Why use `approve()` vs. `checkout_request()`?
-
-- **`checkout_request()`** — use when the action is a purchase. The approval screen shows merchant + items + amount. BKey wires up payment processing downstream.
-- **`approve()`** — use for anything else. Deploy, refund, DB migration, admin grant, agent handoff. You pick the scope and binding message. The signed JWT is your proof.
-
-Both produce an auditable, cryptographically-bound record of user consent.
-
-## Environment variables
-
-| Variable | Description |
+| Variable | Where to get it |
 |---|---|
-| `BKEY_CLIENT_ID` | OAuth client ID from `bkey auth setup-agent` |
-| `BKEY_CLIENT_SECRET` | OAuth client secret from the same command |
-| `BKEY_USER_DID` | The BKey DID of the user whose approval is required. From the BKey mobile app → Settings → Developer → Copy DID. |
-| `BKEY_API_URL` | Optional. Defaults to `https://api.bkey.id`. |
+| `BKEY_CLIENT_ID` / `BKEY_CLIENT_SECRET` | Register an **agent client** at [bkey.id](https://bkey.id) (agent clients use the `client_credentials` grant). |
+| `BKEY_API_URL` | Defaults to `https://api.bkey.id`. Override for staging or a local dev API. |
 
-## See also
+Then source the env and run the CLI:
 
-- [CIBA protocol](https://github.com/bkeyID/bkey/blob/main/docs/authentication/ciba.mdx)
-- [Encryption guide](https://github.com/bkeyID/bkey/blob/main/docs/guides/encryption.mdx) — what encryption protects each step
-- [Python SDK reference](https://bkeyid.github.io/bkey/sdk/python/)
+```bash
+set -a; source .env; set +a
+uv run bkey-agent-checkout \
+  --merchant "Acme Coffee" \
+  --item "Latte:4.50:2" \
+  --item "Croissant:3.25:1" \
+  --currency USD
+```
+
+You'll see:
+
+```
+==> Requesting checkout: Acme Coffee — 12.25 USD
+    checkout id: co_...
+    approve on your phone …
+==> approved
+    payment_intent_id: pi_...
+```
+
+## How it works
+
+Two calls, no magic:
+
+1. **`checkout_request(merchant_name, items, amount, currency)`** → returns a `CheckoutResponse` with an `id`. BKey has already pushed the approval prompt to the user's phone at this point.
+2. **`checkout_poll(checkout_id, timeout=120)`** → blocks until the user approves, rejects, or the server expires the request. On approval, returns a `CheckoutResult` with the `payment_intent_id` you can use to charge.
+
+Errors surface as typed exceptions:
+
+- `ApprovalDeniedError` — user hit reject on their phone.
+- `ApprovalTimeoutError` — user didn't respond within `timeout`.
+- `APIError` — the API returned an error (auth, quota, malformed request).
+
+## Extending this
+
+- **Bind the approval to the exact cart.** The user sees the merchant name and total on the phone. Pass them faithfully — don't let the agent describe a $5 order and charge $500.
+- **Record the `payment_intent_id`.** It's the receipt — store it alongside the user's order so the charge is attributable.
+- **One checkout per action.** Don't reuse an approved checkout for a different cart. If the cart changes, re-request approval.
+- **Multi-user.** This example uses an agent client with a default user DID on the BKey side. For a shared agent, resolve the DID from your session (user login, OAuth, etc.) and register per-user agent clients.
+
+## References
+
+- [`bkey-sdk` on PyPI](https://pypi.org/project/bkey-sdk/) — `BKeyClient` source of truth
+- [CIBA (OpenID Connect)](https://openid.net/specs/openid-client-initiated-backchannel-authentication-core-1_0.html) — the underlying approval protocol
+- `../vault-access` — the companion example for secret retrieval

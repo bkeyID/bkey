@@ -1,96 +1,133 @@
-# TypeScript vault-access example
+# BKey vault-access example
 
-End-to-end example of a Node.js program that reads an encrypted secret from the BKey vault — decrypted only after the user approves on their phone with Face ID — and uses it in-process.
+A tiny CLI that stores and retrieves **end-to-end encrypted secrets** from a BKey vault with biometric approval from the owner's phone.
 
-Also shows the **generic one-line CIBA approval** pattern for any sensitive action.
+BKey's vault is E2EE: the server only ever sees ciphertext. Plaintext crosses the wire only after the user approves the specific release on their phone using facial biometrics — and even then it's sealed to an ephemeral key the requesting process generated for that single access.
 
-## Two things this example demonstrates
+This example shows the full client-side crypto envelope so you can see exactly what is encrypted, when, and against whose key.
 
-1. **Generic biometric approval** — `bkey.approve(...)` — the universal primitive for any sensitive action.
-2. **End-to-end encrypted vault access** — full implementation of the X25519 + AES-256-GCM decrypt envelope, so your agent can read a vault secret without ever exposing it to the backend in plaintext.
+```
+vault-access CLI            BKey                 owner's phone
+      │                      │                      │
+      ├── store "openai" sk- │                      │
+      │     (E2EE envelope) ─▶                      │
+      │                      ├── push ─────────────▶│
+      │                      │    confirm on device─┤
+      │                      │◀── stored ───────────┤
+      │◀── stored ───────────┤                      │
+      │                      │                      │
+      ├── access "openai" ──▶│                      │
+      │     (ephemeral pub)  │                      │
+      │                      ├── push ─────────────▶│
+      │                      │       facial bio ────┤
+      │                      │◀── sealed ciphertext ┤
+      │◀── sealed ciphertext ┤                      │
+      │ (decrypt with        │                      │
+      │  ephemeral priv)     │                      │
+```
 
-## How the encryption works
+## What it exposes
 
-See the [encryption guide](https://github.com/bkeyID/bkey/blob/main/docs/guides/encryption.mdx) for the whole picture. The short version:
+Two subcommands against a single vault item:
 
-1. Agent generates an **ephemeral X25519 keypair** per access request.
-2. Agent sends the public key + item name + purpose to BKey.
-3. BKey pushes a Face ID prompt to the user's phone.
-4. Phone does X25519 ECDH with the ephemeral public key, derives `aesKey = SHA-256(sharedSecret)`, and encrypts the value with AES-256-GCM.
-5. Ciphertext envelope: `phonePubKey(32) || iv(12) || authTag(16) || ciphertext`.
-6. Agent decrypts with its ephemeral private key. Backend never sees plaintext.
+| Command | Behavior |
+|---|---|
+| `store <name> <value>` | Encrypts `value` client-side to the vault's public key (X25519 ECDH + AES-256-GCM), uploads the sealed payload, waits for the phone to confirm storage. |
+| `access <name>` | Generates a fresh ephemeral X25519 keypair, asks the phone to release the named item sealed to that public key, polls, decrypts locally, writes the plaintext to stdout. |
 
-This example implements step 6 using Node's built-in `crypto` module and `@noble/curves` — no extra dependencies beyond what `@bkey/sdk` already bundles.
+Values are stored under a single `key` field, matching the default used by `bkey proxy` and `bkey wrap` — so a secret stored with this example can immediately be referenced as `{vault:name}` by the main BKey CLI.
 
-## Quickstart
+## Setup
+
+This example installs `@bkey/sdk` straight from npm — it's a standalone package you can copy out of the monorepo unchanged.
 
 ```bash
-# 1. Install the CLI + this example
-npm install -g @bkey/cli
-
 cd examples/typescript/vault-access
 npm install
-
-# 2. Create agent credentials (once)
-bkey auth login
-bkey auth setup-agent --name "Vault Demo" --save
-
-# 3. Store a test secret (one-time; triggers Face ID on your phone)
-bkey vault store openai-api-key --field value=sk-test-...
-
-# 4. Configure
-cp .env.example .env
-# Edit .env: BKEY_CLIENT_ID, BKEY_CLIENT_SECRET, BKEY_USER_DID
-
-# 5. Run
-npm run dev
+npm run build
 ```
 
-You'll see two biometric prompts on the phone:
-- First for the generic approval demo.
-- Second for the vault access (decrypts the secret into this process).
+Create a `.env` file next to `package.json` (copy from `.env.example`) and fill in:
 
-## Code walkthrough
-
-### Part 1 — Generic one-line approval
-
-```typescript
-const result = await bkey.approve('Read OPENAI_API_KEY for one API call', {
-  scope: 'approve:action',
-});
-// result.accessToken is an EdDSA JWT
-```
-
-### Part 2 — Vault access with client-side decryption
-
-```typescript
-const { privateKey, publicKey } = x25519.keygen();     // per-request ephemeral
-
-const access = await bkey.createAccessRequest({
-  itemName: 'openai-api-key',
-  fieldPath: 'value',
-  purpose: 'Example agent',
-  ephemeralPublicKey: Buffer.from(publicKey).toString('base64'),
-});
-
-const status = await pollAccessRequest(bkey, access.accessRequest.id);
-const plaintext = decryptE2EE(status.e2eeCiphertext!, privateKey);
-// `plaintext` is the stored value. Never persisted, never logged.
-```
-
-The `decryptE2EE` helper is 20 lines of Node `crypto` — inlined in `src/access.ts`. The same logic is used by the `bkey wrap` CLI command.
-
-## Environment variables
-
-| Variable | Description |
+| Variable | Where to get it |
 |---|---|
-| `BKEY_CLIENT_ID` | OAuth client ID from `bkey auth setup-agent` |
-| `BKEY_CLIENT_SECRET` | OAuth client secret |
-| `BKEY_USER_DID` | BKey DID of the user whose approval is required |
-| `BKEY_API_URL` | Optional. Defaults to `https://api.bkey.id`. |
+| `BKEY_CLIENT_ID` / `BKEY_CLIENT_SECRET` | Register an **agent client** at [bkey.id](https://bkey.id) (agent clients use the `client_credentials` grant). |
+| `BKEY_USER_DID` | The user who owns the vault and will receive approval pushes. In the BKey mobile app: Settings → Developer → Copy DID. |
 
-## See also
+Then, in the BKey mobile app, open the vault once so the phone generates its X25519 keypair and publishes the public key. Until this happens, `store` will fail with "no vault encryption key found."
 
-- [Encryption guide](https://github.com/bkeyID/bkey/blob/main/docs/guides/encryption.mdx)
-- [CIBA protocol](https://github.com/bkeyID/bkey/blob/main/docs/authentication/ciba.mdx)
-- `bkey wrap` — the CLI equivalent (same decryption flow, injected as env vars)
+## Running it
+
+Store:
+
+```bash
+node dist/index.js store openai sk-proj-abc123...
+# Sending "openai" to your phone for storage…
+# Waiting for approval on your phone…
+# [tap approve on phone]
+# Stored "openai" on your device.
+```
+
+Retrieve (writes plaintext to stdout, progress to stderr — safe to redirect):
+
+```bash
+node dist/index.js access openai > key.txt
+# Requesting access to "openai"… waiting for approval on your phone…
+# [facial biometrics on phone]
+cat key.txt
+# sk-proj-abc123...
+```
+
+With a purpose string (shown on the phone next to the item name):
+
+```bash
+node dist/index.js access openai --purpose "Nightly backfill run"
+```
+
+## How the E2EE flow works
+
+### Store
+
+1. CLI calls `getVaultPublicKey()` to fetch the phone's X25519 public key. The server relays this from what the phone published at vault-creation time; the server does **not** have the private half.
+2. CLI generates an ephemeral X25519 keypair, ECDH's against the phone key, SHA-256's the shared secret into a 32-byte AES key, and encrypts `JSON.stringify({key: value})` with AES-256-GCM.
+3. CLI uploads `version(0x02) || ephemeralPub(32) || iv(12) || authTag(16) || ciphertext` as a single base64 blob via `createStoreRequest`.
+4. The phone receives a push, decrypts using its vault private key + the ephemeral public key from the envelope, shows the user the field names it is about to store, and waits for biometric confirmation.
+5. `pollStoreRequest` returns `{ status: 'stored' }` once the phone writes the item to its encrypted local store.
+
+At no point does the server see plaintext. If the server is compromised during this flow, the attacker gets an opaque envelope they cannot open.
+
+### Access
+
+1. CLI generates a **new** ephemeral X25519 keypair per access. The private half never leaves this process.
+2. CLI calls `createAccessRequest({ itemName, fieldPath, purpose, ephemeralPublicKey })`. The server records the request and pushes a notification to the phone.
+3. The user sees `purpose` + item name on their phone, approves with facial biometrics.
+4. The phone decrypts the stored item locally, re-encrypts the requested field to the CLI's ephemeral public key (X25519 ECDH + AES-256-GCM), and uploads the sealed ciphertext.
+5. `pollAccessRequest` returns when status flips to `approved`, carrying the sealed ciphertext.
+6. CLI decrypts with its ephemeral private key and prints the plaintext.
+
+Because the ephemeral keypair is thrown away after this single access, even if an attacker later captures both the ciphertext and the server's logs, they have no key to open it.
+
+## Design rules
+
+**Always set a meaningful `purpose`.** The user sees it on their phone next to the item name. "Nightly backfill — cron job on api-01" is a better prompt than "CLI access" — the user can decide "yes this is mine, not an attacker."
+
+**One access request = one release.** Access request IDs are single-use. Don't cache them; make a fresh request every time you need the secret. (The same applies to the underlying `jti` on the release token server-side — treat them as nonces.)
+
+**New ephemeral keypair per access — never reuse.** The private key should exist in memory only for the lifetime of one request. Reusing it across accesses defeats the forward-secrecy guarantee of the ephemeral-key model.
+
+**Tight `expiresInSecs`.** This example uses 300s. Long enough for a human to pick up their phone, short enough that a stolen terminal with a queued request can't wait hours for the phone to be set down unattended.
+
+**Don't log the plaintext.** The output lands on stdout deliberately so you can pipe it into an env var or a file without it crossing the rest of your log pipeline.
+
+## Extending this
+
+- **Per-user shared CLI.** This example hardcodes one `BKEY_USER_DID`. For a multi-user tool, resolve the DID from your session or from a pairing flow (see [device authorization](https://github.com/bkeyID/bkey/blob/main/docs/authentication/device-authorization.mdx)).
+- **Richer items.** `store <name> <value>` is the single-field case. The store endpoint accepts an `itemType`, multiple fields (as a JSON object), tags, and a website URL — swap in your own structure and update the field map.
+- **Combined with approval.** Fetching the secret tells you *what* to use; gating the subsequent action behind `bkey.approve()` confirms *whether* to use it. Many production integrations do both — see [`examples/typescript/mcp-server`](../mcp-server/) for the approval pattern.
+
+## References
+
+- [`@bkey/sdk` on npm](https://www.npmjs.com/package/@bkey/sdk) — vault + approval client
+- [BKey vault secrets guide](https://github.com/bkeyID/bkey/blob/main/docs/guides/vault-secrets.mdx)
+- [`@bkey/cli` vault command](https://github.com/bkeyID/bkey/blob/main/typescript/packages/cli/src/commands/vault.ts) — reference implementation the envelope format tracks
+- [X25519 (RFC 7748)](https://datatracker.ietf.org/doc/html/rfc7748) / [AES-GCM (NIST SP 800-38D)](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf)

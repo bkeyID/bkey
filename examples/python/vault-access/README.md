@@ -1,107 +1,80 @@
-# Python vault-access example
+# BKey vault access example (Python)
 
-End-to-end example of a Python program that reads an encrypted secret from the BKey vault — decrypted only after the user approves on their phone with Face ID — and uses it to make an authenticated API call.
+Store a secret in BKey's vault, then retrieve it only after the owner biometrically approves on their phone — and decrypt the returned ciphertext locally, so the plaintext never sits in the server's memory on the return path.
 
-Also shows the **generic one-line CIBA approval** pattern — the universal way to gate any sensitive action from Python.
+```
+store:   agent → BKey API → vault (encrypted at rest, bound to user's device key)
+access:  agent → BKey API → push to user's phone
+                              └─> user approves with facial biometrics
+                                    └─> server encrypts secret to our ephemeral X25519 key
+                                          └─> we decrypt locally with our private key
+```
 
-## Two things this example demonstrates
+Two subcommands:
 
-1. **Generic biometric approval** — `client.approve(...)` — the same primitive you'd use for deploys, refunds, admin actions, DB writes, etc.
-2. **Vault access** — how to pull an encrypted secret out of the BKey vault and use it in-process.
+| Subcommand | What it does |
+|---|---|
+| `bkey-vault-access store <name> <value>` | Store a secret under `<name>`. |
+| `bkey-vault-access access <name>` | Request access. Blocks on approval, then decrypts and prints. |
 
-## Why the vault flow uses the CLI wrapper
+## Setup
 
-Vault access is **end-to-end encrypted** between your process and the user's phone:
-
-- Your process generates an ephemeral X25519 keypair per access request.
-- The phone, after Face ID, does X25519 ECDH with your public key and encrypts the value with AES-256-GCM sealed to your ephemeral key.
-- You decrypt locally; the backend never sees plaintext.
-
-See the [encryption guide](https://github.com/bkeyID/bkey/blob/main/docs/guides/encryption.mdx) for the full envelope layout.
-
-The BKey CLI already implements the X25519 + AES-256-GCM decryption (in `bkey wrap`), so the recommended pattern from Python is to **shell out to `bkey wrap`** and receive the decrypted value as an environment variable. This keeps your Python code tiny and the cryptography battle-tested in one place.
-
-For pure-Python E2EE support, you'd add `cryptography` or `pynacl` and mirror the CLI's decrypt logic (X25519 ECDH → SHA-256 → AES-256-GCM, envelope format `phonePubKey(32) || iv(12) || authTag(16) || ciphertext`). See the `bkey wrap` source for reference.
-
-## Quickstart
+This example installs `bkey-sdk` plus `pynacl` (for X25519) straight from PyPI.
 
 ```bash
-# 1. Install the CLI + SDK
-npm install -g @bkey/cli
-
 cd examples/python/vault-access
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 2. Log in + create agent credentials (once)
-bkey auth login
-bkey auth setup-agent --name "Vault Demo" --save
-
-# 3. Store a test secret (one-time; triggers a biometric on your phone)
-bkey vault store openai-api-key --field value=sk-test-...
-
-# 4. Configure
-cp .env.example .env
-# Edit .env: BKEY_CLIENT_ID, BKEY_CLIENT_SECRET, BKEY_USER_DID
-
-# 5. Run
-python access.py
+uv venv
+uv pip install -e .
 ```
 
-You'll see two biometric prompts on the phone:
-- First for the generic approval demo.
-- Second for the vault access (decrypts the secret into this process).
+Create a `.env` file next to `pyproject.toml` (copy from `.env.example`) and fill in:
 
-## How the code works
-
-### Part 1 — Generic one-line approval
-
-```python
-result = client.approve(
-    message="Read OPENAI_API_KEY for a one-off request",
-    user_did=BKEY_USER_DID,
-    scope="approve:action",
-)
-# result.access_token is an EdDSA JWT proving the user said yes
-```
-
-### Part 2 — Vault access via `bkey wrap`
-
-```python
-result = subprocess.run(
-    [
-        "bkey", "wrap",
-        "--env", f"OPENAI_API_KEY={{vault:{ITEM_NAME}}}",
-        "--purpose", "Python example: read OpenAI key",
-        "--",
-        "python", "-c", "import os; print(os.environ['OPENAI_API_KEY'])",
-    ],
-    check=True,
-)
-```
-
-What happens:
-
-1. `bkey wrap` sees the `{vault:openai-api-key}` placeholder.
-2. It creates a vault access request bound to an ephemeral X25519 key.
-3. Phone gets a push notification, user approves with Face ID.
-4. Phone encrypts the value under your ephemeral key; CLI decrypts in-memory.
-5. CLI sets `OPENAI_API_KEY=sk-test-...` on the child process.
-6. Your inner Python program reads `os.environ['OPENAI_API_KEY']`.
-7. When the process exits, the value is gone. No disk, no logs.
-
-## Environment variables
-
-| Variable | Description |
+| Variable | Where to get it |
 |---|---|
-| `BKEY_CLIENT_ID` | OAuth client ID from `bkey auth setup-agent` |
-| `BKEY_CLIENT_SECRET` | OAuth client secret from the same command |
-| `BKEY_USER_DID` | The BKey DID of the user whose approval is required |
-| `BKEY_API_URL` | Optional. Defaults to `https://api.bkey.id`. |
+| `BKEY_CLIENT_ID` / `BKEY_CLIENT_SECRET` | Register a client at [bkey.id](https://bkey.id). |
+| `BKEY_API_URL` | Defaults to `https://api.bkey.id`. Override for staging or local dev. |
 
-## See also
+Then source the env and run:
 
-- [Encryption guide](https://github.com/bkeyID/bkey/blob/main/docs/guides/encryption.mdx)
-- [CIBA protocol](https://github.com/bkeyID/bkey/blob/main/docs/authentication/ciba.mdx)
-- [CLI `vault` + `wrap` commands](https://github.com/bkeyID/bkey/blob/main/docs/sdk/cli.mdx)
-- [Python SDK reference](https://bkeyid.github.io/bkey/sdk/python/)
+```bash
+set -a; source .env; set +a
+uv run bkey-vault-access store stripe-test-key sk_test_1234...
+uv run bkey-vault-access access stripe-test-key
+```
+
+On `access`, you'll see:
+
+```
+==> access requested: id=vault_...
+    approve on your phone …
+==> approved
+sk_test_1234...
+```
+
+## How the E2EE handshake works
+
+1. Before the access request, this script generates a fresh **ephemeral** X25519 keypair in memory.
+2. The request sends only the **public** half (`ephemeralPublicKey`) to BKey.
+3. BKey pushes an approval prompt to the owner's phone. The owner sees what they're approving and confirms with facial biometrics.
+4. On approval, the server encrypts the secret to our ephemeral public key (NaCl box over X25519) and returns the ciphertext plus the server's ephemeral public key.
+5. We decrypt locally using our private key, which never leaves this process.
+
+A fresh keypair per access means a compromise of one session's private key cannot be used to decrypt ciphertext from any other session.
+
+## Caveats
+
+- **The Python SDK does not yet implement client-side encryption on `store`.** The value you pass is sent plaintext over TLS; the BKey API encrypts it server-side before writing to the vault. If you need end-to-end encryption at rest today, use [`@bkey/sdk`](https://www.npmjs.com/package/@bkey/sdk) or the `bkey` CLI to store; this Python example can still decrypt on `access`.
+- **Keys are in-process only.** This script never persists the X25519 private key. If you want to support long-running agents that periodically re-access the same secret, you'll want to generate a new keypair per access (as this example does) — don't cache the private key.
+- **One access per request.** The CIBA approval is bound to the specific `auth_req_id` and the ephemeral public key you send. Don't reuse ciphertext for a different key.
+
+## Extending this
+
+- **Scoped access policies.** Register clients with narrow scopes (`vault:read:stripe-keys`) rather than blanket vault access. The user's phone shows the scope.
+- **Bind to action details.** If your app has a concept like "agent is about to deploy the `foo` service and needs the deploy token", pass that context in the approval request so the user sees it on their phone.
+- **Audit the `jti`.** Every approval comes with a unique JWT id; log it alongside the secret retrieval so reads are traceable.
+
+## References
+
+- [`bkey-sdk` on PyPI](https://pypi.org/project/bkey-sdk/) — `BKeyClient.vault_store()` / `vault_access()` / `vault_poll()`
+- [PyNaCl](https://pynacl.readthedocs.io/) — the X25519 / NaCl box primitives
+- `../agent-checkout` — the companion example for agent-initiated purchases
