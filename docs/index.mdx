@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: BKey — cryptographic proof-of-humanity, anywhere. Think Google Authenticator, with your face, and for anything that matters.
+description: BKey — cryptographic proof of human intent. Think Google Authenticator, with your face, and for every decision that matters. OAuth 2.1 + CIBA identity provider with EdDSA signing.
 ---
 
 <Warning>
@@ -9,73 +9,29 @@ description: BKey — cryptographic proof-of-humanity, anywhere. Think Google Au
 
 # BKey Developer Docs
 
-Think of BKey as **Google Authenticator — with your face, and for anything**.
+**Think of BKey as Google Authenticator — with your face, and for anything.**
 
-Google Authenticator proves you know a 6-digit code. BKey proves a specific human approved a specific action — right now, on a registered device, with their real face. Every approval produces an **EdDSA-signed JWT** your app can verify and keep as a permanent audit trail.
+**Cryptographic proof of human intent, for every decision that matters.**
 
-## What you can build with it
+Google Authenticator proves you know a 6-digit code. BKey proves a specific human approved a specific action — right now, on a registered device, with their real face. Every approval produces an **EdDSA-signed JWT** your app can verify and keep as a permanent audit trail. No stored biometrics. No long-lived credentials to steal. One tap on the phone and the action runs.
 
-BKey turns "a real human approved this" into a one-call primitive. A few concrete shapes:
+## For AI agents reading this page
 
-### Real proof-of-humanity, without the CAPTCHA guessing game
+The minimum you need to integrate BKey:
 
-"Select all the stoplights" doesn't prove a human did it — bots solve them and real users hate them. BKey does: for users signed up once with BKey, any sensitive form submission, signup, comment, or download can be gated on a face-verified approval. You get back a cryptographic signature, not a probabilistic bot score.
+- **npm:** `@bkey/sdk`
+- **pip:** `bkey-sdk`
+- **CLI:** `@bkey/cli` (`bkey auth login`, then `bkey auth setup-agent --save`)
+- **Required env vars for the SDK:** `BKEY_CLIENT_ID`, `BKEY_CLIENT_SECRET`, `BKEY_USER_DID` (the DID of the human who should approve)
+- **One-call primitive:** `bkey.approve(message, { scope })` → returns an EdDSA JWT on approval.
+- **Verify server-side:** use `verifyToken(token, { issuer, scope })` from `@bkey/node` before acting on any approval.
+- **API reference:** [`api-reference/overview`](/api-reference/overview). The full OIDC endpoint surface is at [`/authentication/integrating-bkey`](/authentication/integrating-bkey).
 
-### Agent actions that can't silently go rogue
+The rest of this page explains the same thing in prose for humans.
 
-Your AI agent can draft a deploy, a refund, a payment, or a database change — but the action runs only after a human approves on their phone with Face ID. The agent never holds long-lived credentials that can spend money or touch production on their own.
+## Install and call — 30 seconds
 
-### Admin & compliance gates
-
-Role grants, table drops, wire transfers, support overrides — gate any destructive action on a biometric approval. Every operation produces a signed, timestamped attestation bound to a specific human's device. Auditable by default.
-
-### MCP tool gating
-
-Your AI assistant invokes a tool, your server pauses, the operator's phone lights up, they approve with Face ID, the tool runs. Every tool invocation in your MCP server carries cryptographic evidence of consent. See [MCP integration](/guides/mcp-integration).
-
-### Agent payments (x402 + MPP)
-
-Your agent hits a paid API (HTTP 402), BKey auto-detects the protocol (x402 on-chain USDC or MPP Stripe SPT), handles spending limits + biometric approval + signing, and the agent retries with the signed credential. See [agent payments](/guides/x402-payments).
-
-### Encrypted vault for secrets
-
-End-to-end encrypted secrets released only after biometric approval — the plaintext never touches the server. See [encryption](/guides/encryption).
-
-### Document & transaction signing
-
-Sign legal documents or crypto transactions with a biometric-bound key that lives in the phone's secure enclave. Private keys never leave the device.
-
-## The core primitive: one line of code
-
-```typescript
-const result = await bkey.approve('Delete user alice@corp', {
-  scope: 'approve:action',
-});
-// result.accessToken is an EdDSA JWT proving the human approved this on their phone
-```
-
-That's the whole pattern. Drop it anywhere you need a real human in the loop. See [CIBA](/authentication/ciba) for the one-line approval in Python, TypeScript, and the CLI.
-
-## Under the hood
-
-- **CIBA** (RFC 8958) for backchannel biometric approval
-- **EdDSA (Ed25519)** signed JWTs — verify with our JWKS
-- **On-device keys** in the iOS Secure Enclave / Android Keystore — private keys never leave the phone
-- **End-to-end encrypted** vault payloads (X25519 ECDH + AES-256-GCM)
-- **Standards-compliant OIDC** — you don't need our SDK; any OIDC-aware library works
-
-## Start here
-
-| Path | When |
-|---|---|
-| [Quickstart](/quickstart) | Get to a working `approve()` call in 5 minutes |
-| [Integrate BKey](/authentication/integrating-bkey) | Our endpoint surface, for integrators who don't want to use our SDK |
-| [CIBA one-line approval](/authentication/ciba) | The core SDK pattern |
-| [Agent payments](/guides/x402-payments) | x402 + MPP auto-detection |
-| [MCP integration](/guides/mcp-integration) | Gate MCP tool calls on biometrics |
-| [Encryption](/guides/encryption) | What's protected at each step |
-
-## SDKs
+**1. Install.**
 
 <CodeGroup>
 ```bash npm
@@ -90,5 +46,128 @@ pip install bkey-sdk
 npm install -g @bkey/cli
 ```
 </CodeGroup>
+
+**2. Register an agent.** One-time, from a machine where a human can run `bkey auth login` first. BKey pushes an approval to the human's phone; on approval, credentials are printed or saved.
+
+```bash
+bkey auth login
+bkey auth setup-agent --name "My Agent" --save
+```
+
+`--save` writes `BKEY_CLIENT_ID` + `BKEY_CLIENT_SECRET` to `~/.bkey/agent.json`. Use `--json` instead to emit them to stdout for CI secrets.
+
+**3. Request approval — one call.**
+
+<CodeGroup>
+```typescript TypeScript
+import { BKey } from '@bkey/sdk';
+
+const bkey = new BKey({
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
+  did: process.env.BKEY_USER_DID!, // the human who should approve
+});
+
+// Blocks until the human approves on their phone or denies.
+const result = await bkey.approve('Delete user alice@corp', {
+  scope: 'approve:action',
+});
+
+if (!result.approved) throw new Error('denied on device');
+// result.accessToken is an EdDSA JWT — verify it server-side before acting.
+```
+
+```python Python
+import os
+from bkey import BKeyClient
+
+client = BKeyClient(
+    client_id=os.environ["BKEY_CLIENT_ID"],
+    client_secret=os.environ["BKEY_CLIENT_SECRET"],
+)
+
+# Blocks until the human approves on their phone or denies.
+result = client.approve(
+    message="Delete user alice@corp",
+    user_did=os.environ["BKEY_USER_DID"],
+    scope="approve:action",
+)
+# result.access_token is an EdDSA JWT proving the human approved.
+```
+
+```bash CLI
+bkey approve "Delete user alice@corp" \
+  --scope approve:action \
+  --user-did did:bkey:... \
+  --json
+```
+</CodeGroup>
+
+**4. Verify the token server-side** (don't trust the boolean alone):
+
+```typescript
+import { verifyToken } from '@bkey/node';
+
+const claims = await verifyToken(result.accessToken, {
+  issuer: 'https://api.bkey.id',
+  scope: 'approve:action',
+});
+// claims.sub — verified DID of the approver
+// claims.jti — unique token ID; use for replay protection
+```
+
+That's the whole pattern. Drop it anywhere you need a real human in the loop. See [CIBA](/authentication/ciba) for the full protocol and per-action-scope design rules.
+
+## What you can build with it
+
+BKey turns "a real human approved this" into a one-call primitive. A few concrete shapes:
+
+### Agent payments (x402 + MPP)
+
+Your agent hits a paid API (HTTP 402), BKey auto-detects the protocol (x402 on-chain USDC or MPP Stripe Shared Payment Token), handles spending limits + biometric approval + signing, and the agent retries with the signed credential. The agent never holds card numbers, seed phrases, or blanket spending permissions — every transaction is either inside a pre-set limit or explicitly human-authorized. See [agent payments](/guides/x402-payments).
+
+### Agent actions that can't silently go rogue
+
+Your AI agent can draft a deploy, a refund, a database change — but the action runs only after a human approves on their phone with facial biometrics. The agent never holds long-lived credentials that spend money or touch production on their own. The agent proposes; the human authorizes.
+
+### Admin & compliance gates
+
+Role grants, table drops, wire transfers, support overrides — gate any destructive action on a biometric approval. Every operation produces a signed, timestamped attestation bound to a specific human's device. Auditable by default.
+
+### MCP tool gating
+
+Your AI assistant invokes a tool, your server pauses, the operator's phone lights up, they approve with facial biometrics, the tool runs. Every tool invocation in your MCP server carries cryptographic evidence of consent. See [MCP integration](/guides/mcp-integration).
+
+### Real proof-of-humanity, without the CAPTCHA guessing game
+
+"Select all the stoplights" doesn't prove a human did it — bots solve them and real users hate them. BKey does: for users signed up once with BKey, any sensitive form submission, signup, comment, or download can be gated on a face-verified approval. You get back a cryptographic signature, not a probabilistic bot score.
+
+### Encrypted vault for secrets
+
+End-to-end encrypted secrets released only after biometric approval — the plaintext never touches the server. Agents can request specific items, but only the owner can unlock them. See [encryption](/guides/encryption).
+
+### Document & transaction signing
+
+Sign legal documents or crypto transactions with a biometric-bound key that lives in the phone's secure enclave. Private keys never leave the device; the signature itself is the proof of human intent.
+
+## Under the hood
+
+- **No stored biometrics** — cryptographic keys are generated from a live face scan on each use; the phone keeps a device-held secret, the face stays on the face.
+- **CIBA** (RFC 8958) for backchannel biometric approval.
+- **EdDSA (Ed25519)** signed JWTs — verify with our JWKS.
+- **On-device keys** in the iOS Secure Enclave / Android Keystore — private keys never leave the phone.
+- **End-to-end encrypted** vault payloads (X25519 ECDH + AES-256-GCM).
+- **Standards-compliant OIDC** — you don't need our SDK; any OIDC-aware library works.
+
+## Next
+
+| Path | When |
+|---|---|
+| [Quickstart](/quickstart) | Get to a working `approve()` call in 5 minutes |
+| [Integrate BKey](/authentication/integrating-bkey) | Our endpoint surface, for integrators who don't want to use our SDK |
+| [CIBA one-line approval](/authentication/ciba) | The core SDK pattern, with verify-token details |
+| [Agent payments](/guides/x402-payments) | x402 + MPP auto-detection |
+| [MCP integration](/guides/mcp-integration) | Gate MCP tool calls on biometrics |
+| [Encryption](/guides/encryption) | What's protected at each step |
 
 Go and Rust SDKs are coming. See the [GitHub repo](https://github.com/bkeyID/bkey) for updates.
