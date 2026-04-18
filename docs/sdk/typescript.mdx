@@ -1,6 +1,6 @@
 ---
 title: TypeScript SDK
-description: "@bkey/sdk — TypeScript/JavaScript client for BKey."
+description: "@bkey/sdk — TypeScript/JavaScript client for BKey. Biometric approval in one line."
 ---
 
 # TypeScript SDK
@@ -11,16 +11,135 @@ description: "@bkey/sdk — TypeScript/JavaScript client for BKey."
 npm install @bkey/sdk
 ```
 
-## Usage
+For server-side token verification you also want `@bkey/node`:
+
+```bash
+npm install @bkey/node
+```
+
+## Biometric approval in one line
+
+This is the whole pattern — drop it anywhere you need a human in the loop.
 
 ```typescript
-import { BKeyClient } from '@bkey/sdk';
+import { BKey } from '@bkey/sdk';
 
-const bkey = new BKeyClient({
+const bkey = new BKey({
+  apiUrl: 'https://api.bkey.id',
   clientId: process.env.BKEY_CLIENT_ID!,
   clientSecret: process.env.BKEY_CLIENT_SECRET!,
+  did: process.env.BKEY_USER_DID!,
+});
+
+// Blocks until the user approves on their phone or denies.
+const result = await bkey.approve('Deploy api-gateway@abc123 to production', {
+  scope: 'approve:deploy',
+});
+
+if (!result.approved) {
+  return { error: 'Denied on device' };
+}
+
+// result.accessToken is an EdDSA-signed JWT — always verify it server-side
+// before acting on the approval.
+```
+
+A single `bkey.approve(...)` call initiates CIBA, sends the push notification, and polls for the signed token. You never deal with the two-step protocol directly.
+
+### Verify the token before trusting it
+
+The boolean `approved` tells you the flow completed. `verifyToken()` tells you the token is real:
+
+```typescript
+import { verifyToken } from '@bkey/node';
+
+const claims = await verifyToken(result.accessToken, {
+  issuer: 'https://api.bkey.id',
+  scope: 'approve:deploy',
+});
+
+// claims.sub   — verified DID of the user who approved
+// claims.jti   — unique token ID, use for replay protection
+// claims.scope — scopes actually granted
+runDeploy({ service, ref, approvedBy: claims.sub, jti: claims.jti });
+```
+
+See [MCP integration](/guides/mcp-integration) for why `verifyToken` is load-bearing and what it checks.
+
+### Anywhere a scope fits
+
+| Use case | Scope | Example binding message |
+|---|---|---|
+| Deploy | `approve:deploy` | `"Deploy api-gateway@abc123 to prod"` |
+| Refund | `approve:payment` | `"Refund $29.99 to customer@example.com"` |
+| DB drop | `approve:action` | `"Drop table users_archive (irreversible)"` |
+| Admin | `approve:action` | `"Grant admin role to alice@corp"` |
+| Vault read | `approve:action` | `"Read OPENAI_API_KEY"` |
+
+Register a tight scope per sensitive action — it shows up on the user's phone and prevents a token issued for one action from being replayed against another.
+
+### Structured action details
+
+For anything the user should see in detail — amounts, recipients, resources — pass `actionDetails`:
+
+```typescript
+const result = await bkey.approve('Refund $29.99 order #A-1234', {
+  scope: 'approve:payment',
+  actionDetails: {
+    type: 'refund',
+    description: 'Refund for order #A-1234',
+    amount: 29.99,
+    currency: 'USD',
+    recipient: 'customer@example.com',
+  },
 });
 ```
+
+## Checkout
+
+For e-commerce checkouts, use `createCheckoutRequest` — it wraps CIBA with checkout-specific fields:
+
+```typescript
+const checkout = await bkey.createCheckoutRequest({
+  merchantName: 'Example Store',
+  items: [{ name: 'Widget', price: 9.99, quantity: 1 }],
+  amount: 9.99,
+  currency: 'USD',
+});
+
+const result = await bkey.getCheckoutRequestStatus(checkout.id);
+if (result.status === 'completed') {
+  fulfillOrder(result.paymentIntentId);
+}
+```
+
+## Vault
+
+Request access to a stored secret (triggers biometric approval):
+
+```typescript
+const access = await bkey.createAccessRequest({
+  itemName: 'openai-api-key',
+  fieldPath: 'value',
+  purpose: 'API call to OpenAI',
+  ephemeralPublicKey: myEphemeralX25519PublicKey, // base64
+});
+const result = await bkey.getAccessRequestStatus(access.id);
+// result.e2eeCiphertext is X25519-ECDH + AES-256-GCM sealed to your ephemeral key
+```
+
+See the [encryption guide](/guides/encryption) for the exact ciphertext flow.
+
+## x402 payments
+
+See the [x402 guide](/guides/x402-payments) for the full `authorizeX402Payment` flow.
+
+## Examples
+
+- [`examples/typescript/agent-checkout`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/agent-checkout) — end-to-end checkout flow
+- [`examples/typescript/vault-access`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/vault-access) — vault secret retrieval with biometric approval
+- [`examples/typescript/mcp-server`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/mcp-server) — MCP tool gated on biometric approval
+- [`examples/typescript/x402-agent`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/x402-agent) — autonomous agent paying for x402 APIs
 
 ## API Reference
 

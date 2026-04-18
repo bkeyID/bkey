@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: "@bkey/cli — command-line tool for BKey."
+description: "@bkey/cli — biometric approval and vault access from the terminal."
 ---
 
 # BKey CLI
@@ -11,21 +11,61 @@ description: "@bkey/cli — command-line tool for BKey."
 npm install -g @bkey/cli
 ```
 
+## First-time setup
+
+```bash
+# Log in with QR code (device authorization)
+bkey auth login
+
+# Create agent credentials for a program that will request approvals
+bkey auth setup-agent --name "My Agent" --save
+```
+
+`setup-agent --save` writes `BKEY_CLIENT_ID` and `BKEY_CLIENT_SECRET` to `~/.bkey/agents/<name>.env`, ready to source.
+
+## Biometric approval from the terminal
+
+```bash
+bkey approve "Deploy api-gateway@abc123 to production" \
+  --scope approve:deploy \
+  --user-did did:bkey:...
+```
+
+Blocks until the user approves on their phone. Exits 0 on approval, non-zero on denial or timeout. Pipe it to gate any shell command:
+
+```bash
+bkey approve "Run db migration 0042" --scope approve:action && \
+  ./scripts/migrate.sh
+```
+
+Add `--json` to get the full approval token on stdout for downstream use. Add `--amount`, `--currency`, `--resource`, `--recipient`, `--description` to render structured details on the approval screen.
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `bkey auth login` | Device auth flow (QR code) |
-| `bkey auth setup-agent` | Create OAuth client credentials |
-| `bkey auth status` | Show current auth status |
-| `bkey auth logout` | Revoke tokens |
-| `bkey vault store` | Encrypt and store a secret |
-| `bkey vault access` | Request access to a secret |
-| `bkey checkout request` | Initiate a checkout approval |
-| `bkey checkout status` | Poll checkout status |
-| `bkey approve` | Generic CIBA approval |
-| `bkey proxy` | Credential proxy for agents |
-| `bkey wrap` | Wrap commands with biometric auth |
+| `bkey auth login` | Device auth flow (QR code). |
+| `bkey auth setup-agent` | Create agent OAuth client credentials. |
+| `bkey auth status` | Show current auth status. |
+| `bkey auth logout` | Revoke tokens. |
+| `bkey approve <msg>` | Generic CIBA approval. |
+| `bkey vault store <name>` | Store a secret with end-to-end encryption. |
+| `bkey vault access <name>` | Request a stored secret (biometric-approved). |
+| `bkey checkout request` | Initiate a checkout approval. |
+| `bkey checkout status <id>` | Poll a checkout. |
+| `bkey proxy <url>` | HTTP proxy that handles 402 payments automatically. |
+| `bkey wrap -- <cmd>` | Run a command with vault secrets injected as env vars (biometric-approved reads). |
+
+## `bkey wrap` — inject vault secrets into a process
+
+Run any program with vault-backed environment variables. Each `{vault:name}` placeholder triggers a biometric approval on the user's phone before the command starts, and the decrypted value is delivered end-to-end to the CLI process:
+
+```bash
+bkey wrap --env OPENAI_API_KEY={vault:openai-api-key} -- \
+  python my_agent.py
+```
+
+The value is never written to disk. If the user denies, the wrapped command never runs.
 
 ## Source
 

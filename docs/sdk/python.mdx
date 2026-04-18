@@ -1,6 +1,6 @@
 ---
 title: Python SDK
-description: "bkey — Python client for BKey."
+description: "bkey-sdk — Python client for BKey. Biometric approval in one line."
 ---
 
 # Python SDK
@@ -9,20 +9,100 @@ description: "bkey — Python client for BKey."
 
 ```bash
 pip install bkey-sdk
-pip install bkey-sdk[async]   # for async support
+pip install bkey-sdk[async]   # + httpx for async support
 pip install bkey-sdk[all]     # everything
 ```
 
-## Usage
+## Biometric approval in one line
+
+This is the whole pattern — drop it anywhere you need a human in the loop.
 
 ```python
 from bkey import BKeyClient
 
 client = BKeyClient(
-    client_id="your-client-id",
-    client_secret="your-client-secret",
+    client_id=os.environ["BKEY_CLIENT_ID"],
+    client_secret=os.environ["BKEY_CLIENT_SECRET"],
+)
+
+# Blocks until the user approves on their phone or denies.
+# Raises ApprovalDeniedError on denial, ApprovalTimeoutError on timeout.
+result = client.approve(
+    message="Deploy api-gateway@abc123 to production",
+    user_did="did:bkey:...",
+    scope="approve:deploy",
+)
+
+# result.access_token is an EdDSA-signed JWT you can verify server-side.
+run_deploy(approved_by=result.access_token)
+```
+
+The single `client.approve(...)` call does three things under the hood: it initiates the CIBA request, sends the push notification to the user's phone, and polls for the signed token. You never have to touch the two-step protocol directly.
+
+### Anywhere a scope fits
+
+| Use case | Scope | Example message |
+|---|---|---|
+| Deploy | `approve:deploy` | `"Deploy api-gateway@abc123 to prod"` |
+| Refund | `approve:payment` | `"Refund $29.99 to customer@example.com"` |
+| DB drop | `approve:action` | `"Drop table users_archive (irreversible)"` |
+| Admin | `approve:action` | `"Grant admin role to alice@corp"` |
+| Vault read | `approve:action` | `"Read OPENAI_API_KEY"` |
+
+Register a tight scope per sensitive action — it shows up on the user's phone and prevents a token issued for one action from being replayed against another.
+
+### Structured action details
+
+For anything the user should see in detail — amounts, recipients, resources — pass `action_details`:
+
+```python
+result = client.approve(
+    message="Refund $29.99 order #A-1234",
+    user_did="did:bkey:...",
+    scope="approve:payment",
+    action_details={
+        "type": "refund",
+        "description": "Refund for order #A-1234",
+        "amount": 29.99,
+        "currency": "USD",
+        "recipient": "customer@example.com",
+    },
 )
 ```
+
+## Checkout
+
+For e-commerce checkouts, use the higher-level `checkout_request` — it wraps CIBA with checkout-specific fields:
+
+```python
+checkout = client.checkout_request(
+    merchant_name="Example Store",
+    items=[{"name": "Widget", "price": 9.99, "quantity": 1}],
+    amount=9.99,
+    currency="USD",
+)
+
+result = client.checkout_poll(checkout.id)
+if result.status == "completed":
+    fulfill_order(result.payment_intent_id)
+```
+
+## Vault
+
+Request access to a stored secret (triggers biometric approval):
+
+```python
+access = client.vault_access("openai-api-key")
+result = client.vault_poll(access.id)
+# result.data contains the decrypted value returned by the user's phone
+```
+
+See the [encryption guide](/guides/encryption) for the exact ciphertext flow.
+
+## Examples
+
+- [`examples/python/agent-checkout`](https://github.com/bkeyID/bkey/tree/main/examples/python/agent-checkout) — end-to-end checkout flow
+- [`examples/python/vault-access`](https://github.com/bkeyID/bkey/tree/main/examples/python/vault-access) — vault secret retrieval with biometric approval
 
 ## API Reference
 

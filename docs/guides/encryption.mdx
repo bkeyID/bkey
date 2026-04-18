@@ -1,0 +1,163 @@
+---
+title: Encryption
+description: How BKey encrypts data at every layer — from the user's phone, through your integration, to approval tokens and vault payloads.
+---
+
+# Encryption
+
+This page answers: **what encryption protects my data at each step of a BKey integration, and what key lives where?**
+
+BKey's guarantee is that sensitive material — approval tokens, vault secrets, payment payloads — is either protected end-to-end to the user's phone, or signed by a key that never leaves the phone's secure enclave. The backend is designed to be a courier, not a custodian.
+
+## One-slide summary
+
+| What | Algorithm | Where the key lives |
+|---|---|---|
+| Transport (every HTTP request) | TLS 1.2+ with modern cipher suites | Terminating LB / TLS-offload at the edge |
+| Approval tokens (CIBA JWTs) | **EdDSA (Ed25519)** | Private key at BKey issuer; public key served via JWKS |
+| Vault at rest — plaintext | **Never stored** | Only in your CLI process memory after decryption |
+| Vault storage (CLI → phone) | **X25519 ECDH → AES-256-GCM**, v2 envelope | Vault private key in iOS Secure Enclave / Android Keystore (biometric-gated) |
+| Vault access (phone → CLI) | **X25519 ECDH → AES-256-GCM**, ephemeral-ephemeral | CLI generates ephemeral keypair per request |
+| Challenge binding (anti-MITM) | SHA-256 + secp256k1 signature | Device signing key (biometric-gated on-device) |
+| x402 payment payloads | **EIP-3009 USDC authorization**, secp256k1 signature | On-device wallet key; server encrypts at-rest with AES-256-GCM before DB write |
+| Ciphertext at rest in DB | AES-256-GCM with server DEK (where applicable) | Server-held DEK, rotated out-of-band |
+
+**Key takeaways:**
+
+- Approvals are **signed**, not encrypted. The signature is the proof.
+- Vault fields are **end-to-end encrypted** between your CLI and the user's phone. The backend sees only ciphertext.
+- Every on-device key is **biometric-gated** — facial authentication is required to use it.
+
+## The developer integration flow — where encryption kicks in
+
+Say you're building an agent that reads a vault secret and uses it to deploy to production. Here's every boundary where encryption matters:
+
+```
+┌─── your agent (server) ────────┐      ┌─── BKey ────┐      ┌─── user's phone ───┐
+│                                 │      │             │      │                    │
+│  1. @bkey/sdk → bkey.approve()─── TLS ─▶ issue CIBA ─ push ─▶ biometric prompt   │
+│                                 │      │             │      │   (Face ID)        │
+│                                 │      │             │ ◀─── signed consent ──┤   │
+│  3. ◀── EdDSA JWT access token ── TLS ─│             │      │                    │
+│                                 │      │             │      │                    │
+│  4. verifyToken() ← JWKS fetch ── TLS ─▶ /oauth/jwks │      │                    │
+│                                 │      │             │      │                    │
+│  5. bkey.createAccessRequest()── TLS ─▶ store req    │      │                    │
+│     (sends ephemeral X25519 pub)│      │   → push ──────────▶ decrypt + re-enc   │
+│                                 │      │             │      │   to our pub key   │
+│                                 │      │             │ ◀── X25519+GCM ciphertext ┤│
+│  6. ◀── ciphertext (opaque) ───── TLS ─│             │      │                    │
+│  7. CLI decrypts locally        │      │             │      │                    │
+│                                 │      │             │      │                    │
+│  8. run deploy with secret      │      │             │      │                    │
+└─────────────────────────────────┘      └─────────────┘      └────────────────────┘
+```
+
+### Step-by-step
+
+**1–3. Approval request (CIBA):**
+`bkey.approve()` (TypeScript) or `client.approve()` (Python) starts here. Traffic to BKey is **TLS 1.2+**. BKey pushes a prompt to the phone; the phone **signs** the consent with the device's Ed25519 key (gated on Face ID) and returns the signature through the same channel. BKey wraps it in a JWT signed by the issuer's Ed25519 key.
+
+**4. Token verification:**
+Never trust the JWT on your side until you call `verifyToken()` from `@bkey/node` (or equivalent). That library fetches BKey's public keys from `/oauth/jwks` — cached 5 minutes, refetched on `kid` miss — and verifies the EdDSA signature, `iss`, `exp`, `aud`, and required scopes. No HS256 confusion, no `alg: none`. See the [verifyToken](/guides/mcp-integration#what-verifytoken-actually-checks) reference.
+
+**5. Vault access request:**
+Your SDK generates an **ephemeral X25519 key pair** (one per request). It sends the public key in the access request. The request is bound to `challenge || itemName || purpose || ephemeralPubKey` so a compromised backend can't swap the key mid-flight.
+
+**6. Phone re-encrypts to your ephemeral key:**
+After Face ID unlocks the vault key, the phone runs X25519 ECDH with your ephemeral public key, derives `aesKey = SHA-256(sharedSecret)`, and encrypts the plaintext with AES-256-GCM. The ciphertext format is:
+
+```
+phonePubKey(32) || iv(12) || authTag(16) || ciphertext
+```
+
+The backend stores and forwards this blob verbatim. It can't decrypt it — only your CLI, which holds the ephemeral X25519 private key, can.
+
+**7. CLI decrypts locally:**
+`bkey vault access` / `bkey wrap` decrypt in-process. The plaintext is never written to disk. With `bkey wrap`, it's passed to the child process as an env var and discarded when the process exits.
+
+**8. Use the secret.**
+
+## Vault storage — the other direction
+
+Storing a secret goes through the same envelope in reverse:
+
+```
+CLI → phone:  version(1) || cliEphemeralPub(32) || iv(12) || authTag(16) || ciphertext
+```
+
+- The phone registers a **long-lived X25519 public key** with the backend (RFC 7748 §6.1; all-zeros rejected).
+- The CLI generates an **ephemeral X25519 keypair** per store operation.
+- CLI does ECDH with the phone's public key, derives AES-256-GCM key via SHA-256, encrypts the fields as JSON.
+- The `version(0x02)` byte lets future envelopes coexist with old ones.
+- The backend only sees ciphertext; the phone does the matching decrypt.
+
+The phone's X25519 private key lives in the OS secure keystore — **iOS Keychain** and **Android Keystore** (hardware-backed where available, StrongBox on supported devices). It's tied to the device; it never leaves, it doesn't sync to iCloud.
+
+## Challenge binding — why we can't be MITM'd
+
+For vault access specifically, the signed consent is over:
+
+```
+SHA-256(challenge || itemName || purpose || ephemeralPublicKey)
+```
+
+The ephemeral public key is part of the hash. A backend that tried to swap your CLI's public key with its own (to intercept the ciphertext) would break the signature — the phone signs the hash before it knows the backend has tampered, and your CLI verifies the signature before trusting the ciphertext.
+
+This is what lets us claim "end-to-end" and mean it. The backend is a courier, not a custodian.
+
+## x402 payment payloads
+
+Agent payments use a different path — the value at stake is an on-chain USDC transfer, not a secret.
+
+1. Your agent calls `bkey.authorizeX402Payment({ amountCents, recipientAddress, chainId })`.
+2. If within the per-agent spending limit → auto-approved, BKey returns an **EIP-3009 `TransferWithAuthorization`** payload signed with the user's **secp256k1** wallet key.
+3. If above the limit → CIBA biometric prompt. After Face ID, same signed payload, same format.
+4. Signed payloads are **stored at rest** encrypted with AES-256-GCM using a server-held DEK. This is defence-in-depth — the payload is already short-lived and publicly verifiable on-chain once submitted — but it means a DB leak doesn't leak spend authorizations.
+5. Validity window: **< 5 minutes**. Front-run resistance comes from EIP-3009's `ReceiveWithAuthorization` variant where supported.
+
+Wallet private keys live in the same on-device secure storage as vault keys.
+
+## What the backend *doesn't* have
+
+A quick checklist for security reviewers:
+
+- ❌ No plaintext vault values at rest or in flight
+- ❌ No cleartext CIBA signing key (device keys stay on device)
+- ❌ No iCloud/Google Drive sync of on-device keys
+- ❌ No bearer tokens with long-lived power — CIBA tokens are single-action, scoped, and JTI-trackable for replay protection
+- ✅ Ciphertext, timestamps, DIDs, scopes, audit metadata
+
+## Transport details
+
+- **TLS 1.2+** on every endpoint, with modern cipher suite selection terminated at the edge.
+- **HSTS** enforced on `api.bkey.id`.
+- **No plaintext fallback** — HTTP connections are redirected to HTTPS.
+
+## Token format reference
+
+CIBA and OAuth tokens from BKey are JWTs with:
+
+```
+header:  { "alg": "EdDSA", "kid": "<key id>", "typ": "JWT" }
+payload: {
+  "iss": "https://api.bkey.id",
+  "sub": "did:bkey:...",
+  "aud": "your-client-id",
+  "scope": "approve:deploy",
+  "jti": "<unique>",
+  "iat": ..., "exp": ...
+}
+signature: Ed25519(header || "." || payload)
+```
+
+Verify with any JWKS-aware JWT library or `@bkey/node`'s `verifyToken()`.
+
+## Further reading
+
+- [CIBA flow](/authentication/ciba) — the approval protocol in detail
+- [MCP integration](/guides/mcp-integration) — why server-side `verifyToken()` is the load-bearing check
+- [x402 payments](/guides/x402-payments) — agent payments end-to-end
+- CLI vault envelope decrypt: [`typescript/packages/cli/src/commands/wrap.ts`](https://github.com/bkeyID/bkey/blob/main/typescript/packages/cli/src/commands/wrap.ts)
+- SDK access-request flow: [`typescript/packages/sdk/src/poll.ts`](https://github.com/bkeyID/bkey/blob/main/typescript/packages/sdk/src/poll.ts)
+- Token verification: [`@bkey/node` on npm](https://www.npmjs.com/package/@bkey/node)

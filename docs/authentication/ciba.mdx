@@ -5,30 +5,103 @@ description: Client-Initiated Backchannel Authentication — per-action biometri
 
 # CIBA (Client-Initiated Backchannel Authentication)
 
-CIBA is BKey's core mechanism. An agent or server requests approval, and the user gets a push notification to approve with facial biometrics.
+CIBA is BKey's core mechanism. An agent or server requests approval for a specific action; the user's phone gets a push notification and approves with facial biometrics. BKey returns an EdDSA-signed JWT that proves the consent.
 
-## When to Use
+## When to use it
 
-- Agent requests human approval before an action
-- Per-transaction authorization
-- Elevated privilege operations
+- An agent needs explicit human approval before a sensitive action
+- Per-transaction authorization (deploys, refunds, vault reads, DB writes)
+- Anywhere you'd replace a soft "click Allow" dialog with cryptographic consent
 
-## Flow
+## One-line integration
 
-1. Agent calls `POST /oauth/bc-authorize` with scope and binding message
-2. BKey sends push notification to user's mobile app
-3. User reviews the request and approves with biometrics
-4. Agent polls `POST /oauth/token` with `grant-type:ciba` until resolved
+Both SDKs expose a single `approve()` call that hides the full two-step protocol.
 
-## Example
+### TypeScript
+
+```typescript
+import { BKey } from '@bkey/sdk';
+import { verifyToken } from '@bkey/node';
+
+const bkey = new BKey({
+  apiUrl: 'https://api.bkey.id',
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
+  did: process.env.BKEY_USER_DID!,
+});
+
+const result = await bkey.approve('Deploy api-gateway@abc123 to production', {
+  scope: 'approve:deploy',
+});
+
+if (!result.approved) throw new Error('Denied on device');
+
+// Always verify server-side before acting on it.
+const claims = await verifyToken(result.accessToken, {
+  issuer: 'https://api.bkey.id',
+  scope: 'approve:deploy',
+});
+
+runDeploy({ approvedBy: claims.sub, jti: claims.jti });
+```
+
+### Python
+
+```python
+from bkey import BKeyClient
+
+client = BKeyClient(
+    client_id=os.environ["BKEY_CLIENT_ID"],
+    client_secret=os.environ["BKEY_CLIENT_SECRET"],
+)
+
+result = client.approve(
+    message="Deploy api-gateway@abc123 to production",
+    user_did="did:bkey:...",
+    scope="approve:deploy",
+)
+
+# result.access_token is an EdDSA JWT — verify it server-side before acting.
+run_deploy(approved_by=result.access_token)
+```
+
+That single call initiates the CIBA request, sends the push notification, polls for the result, and returns the signed token on approval. On denial it raises (Python) or returns `approved: false` (TypeScript).
+
+## Flow at the protocol level
+
+If you need to talk to the API directly, CIBA is two calls:
+
+1. **Initiate** — `POST /oauth/bc-authorize` with the user's DID and the action scope.
+2. **Poll** — `POST /oauth/token` with `grant_type=urn:openid:params:grant-type:ciba` until approved, denied, or expired.
+
+```
+agent                    BKey                    user's phone
+  │                        │                         │
+  ├── bc-authorize ──────▶│                         │
+  │◀─ auth_req_id ────────│                         │
+  │                        ├── push notification ──▶│
+  │                        │              approve ──│
+  ├── /oauth/token ───────▶│                         │
+  │◀─ access_token + JWT ─│                         │
+```
+
+### Raw HTTP example
 
 ```http
 POST /oauth/bc-authorize
 Authorization: Bearer <agent_token>
+Content-Type: application/json
 
 {
-  "scope": "approve:payments",
-  "binding_message": "Approve $29.99 purchase at Example Store"
+  "login_hint": "did:bkey:alice",
+  "scope": "openid approve:deploy",
+  "binding_message": "Deploy api-gateway@abc123 to production",
+  "action_details": {
+    "type": "deploy",
+    "description": "Deploy api-gateway@abc123",
+    "resource": "api-gateway@abc123"
+  },
+  "requested_expiry": 300
 }
 ```
 
@@ -46,9 +119,35 @@ Then poll:
 
 ```http
 POST /oauth/token
+Content-Type: application/x-www-form-urlencoded
 
-{
-  "grant_type": "urn:openid:params:grant-type:ciba",
-  "auth_req_id": "ciba_abc123"
-}
+grant_type=urn:openid:params:grant-type:ciba&auth_req_id=ciba_abc123&client_id=...&client_secret=...
 ```
+
+## What the approval token contains
+
+The token you receive is an EdDSA (Ed25519) JWT signed by BKey:
+
+| Claim | Meaning |
+|---|---|
+| `sub` | DID of the user who approved |
+| `scope` | Scopes granted (must match what you requested) |
+| `jti` | Unique token ID — use for replay protection |
+| `iss` | BKey issuer URL |
+| `iat` / `exp` | Issued-at / expiry |
+
+Verify with `verifyToken()` from `@bkey/node` (TypeScript) or the JWKS at `GET /oauth/jwks`.
+
+## Design rules
+
+- **One scope per sensitive action.** `approve:deploy`, `approve:refund`, `approve:db:drop` — not a single "admin" scope. Scopes show up on the user's phone and in audit logs.
+- **Always verify server-side.** `approved: true` means the flow completed. `verifyToken()` means the token is real. Don't skip it.
+- **Treat `jti` as a nonce.** Record approved JTIs server-side; reject replays.
+- **Keep expiries tight.** 300s (5 min) is the default and usually the right choice. Don't use hours-long expiries — approvals are per-action, not per-session.
+- **Bind to details.** Use `action_details` to render amounts, recipients, and resources on the approval screen.
+
+## See also
+
+- [Encryption guide](/guides/encryption) — EdDSA tokens, TLS transport, on-device key storage
+- [MCP integration](/guides/mcp-integration) — gating MCP tool calls on CIBA
+- [`@bkey/node` on npm](https://www.npmjs.com/package/@bkey/node) — token verification

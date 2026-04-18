@@ -151,20 +151,103 @@ class BKeyClient:
 
     # ── CIBA ────────────────────────────────────────────────────────────
 
+    def approve(
+        self,
+        message: str,
+        user_did: str,
+        scope: str = "approve:action",
+        action_details: dict[str, Any] | None = None,
+        expiry_seconds: int = 300,
+        timeout: int | None = None,
+    ) -> CIBAResult:
+        """Request biometric approval from the user — one-call CIBA flow.
+
+        Sends a push notification to ``user_did``'s phone. Blocks until the user
+        approves (with facial biometrics), denies, or the request expires.
+
+        Args:
+            message: Human-readable prompt shown on the approval screen.
+            user_did: The BKey DID of the user whose approval is required.
+            scope: CIBA scope (default ``approve:action``). Use tight scopes
+                per action (e.g. ``approve:deploy``, ``approve:refund``).
+            action_details: Optional structured details (type, resource,
+                amount, recipient, etc.) rendered on the approval screen.
+            expiry_seconds: How long the approval prompt is valid (30-600s).
+            timeout: How long to poll for a result in seconds. Defaults to
+                ``expiry_seconds`` so we don't stop polling while the phone
+                prompt is still live.
+
+        Returns:
+            ``CIBAResult`` with ``access_token`` — an EdDSA-signed JWT you
+            can verify server-side before acting on the approval.
+
+        Raises:
+            ApprovalDeniedError: User denied on device.
+            ApprovalTimeoutError: No response within ``timeout``.
+
+        Example::
+
+            client = BKeyClient(client_id=..., client_secret=...)
+            result = client.approve(
+                message="Deploy api-gateway@abc123 to production",
+                user_did="did:bkey:...",
+                scope="approve:deploy",
+            )
+            # result.access_token is the verified approval token
+        """
+        req = self.initiate_approval(
+            user_did=user_did,
+            scope=scope,
+            binding_message=message,
+            action_details=action_details,
+            requested_expiry=expiry_seconds,
+        )
+        # Poll for at least as long as the phone prompt is live.
+        poll_timeout = timeout if timeout is not None else expiry_seconds
+        result = self.poll_approval(req.auth_req_id, timeout=poll_timeout)
+        # poll_approval only raises on 'denied'. An 'expired' result has no
+        # access_token; callers of approve() expect a usable token or an
+        # exception — don't silently return an unusable result.
+        if result.status == "expired":
+            raise ApprovalTimeoutError("Approval request expired before the user responded")
+        if not result.access_token:
+            raise ApprovalDeniedError(f"Approval did not produce a token (status={result.status!r})")
+        return result
+
     def initiate_approval(
         self,
-        scope: str,
+        user_did: str,
+        scope: str = "approve:action",
         binding_message: str | None = None,
+        action_details: dict[str, Any] | None = None,
+        requested_expiry: int | None = None,
     ) -> CIBAResponse:
-        """Initiate a CIBA backchannel authorization request."""
-        data = self._request(
-            "POST",
-            "/oauth/bc-authorize",
-            json={
-                "scope": scope,
-                "binding_message": binding_message,
-            },
-        )
+        """Initiate a CIBA backchannel authorization request.
+
+        Prefer :meth:`approve` for the common case — it handles initiation
+        and polling in one call.
+        """
+        # v0.1.0 shipped with `scope` as the first positional argument and no
+        # login_hint — that signature never worked against the real backend
+        # (which requires login_hint). Catch the common upgrade mistake where
+        # a scope-like string is passed as user_did and produce a clear error
+        # instead of a backend 400.
+        if not user_did.startswith("did:"):
+            raise ValueError(
+                f"initiate_approval: user_did must be a BKey DID (got {user_did!r}). "
+                "The first positional argument is now user_did — scope is a keyword."
+            )
+        body: dict[str, Any] = {
+            "login_hint": user_did,
+            "scope": scope if "openid" in scope.split() else f"openid {scope}",
+        }
+        if binding_message is not None:
+            body["binding_message"] = binding_message
+        if action_details is not None:
+            body["action_details"] = action_details
+        if requested_expiry is not None:
+            body["requested_expiry"] = requested_expiry
+        data = self._request("POST", "/oauth/bc-authorize", json=body)
         return CIBAResponse(**data)
 
     def poll_approval(

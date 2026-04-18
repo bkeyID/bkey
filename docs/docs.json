@@ -18,7 +18,10 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["index", "quickstart"]
+            "pages": [
+              "index",
+              "quickstart"
+            ]
           },
           {
             "group": "Authentication",
@@ -32,6 +35,8 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/x402-payments",
+              "guides/encryption",
               "guides/agent-checkout",
               "guides/vault-secrets",
               "guides/mcp-integration"
@@ -44,7 +49,9 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": ["api-reference/overview"]
+            "pages": [
+              "api-reference/overview"
+            ]
           },
           {
             "group": "OAuth 2.1 & OIDC",
@@ -89,7 +96,11 @@
         "groups": [
           {
             "group": "SDKs",
-            "pages": ["sdk/typescript", "sdk/python", "sdk/cli"]
+            "pages": [
+              "sdk/typescript",
+              "sdk/python",
+              "sdk/cli"
+            ]
           }
         ]
       }
