@@ -115,7 +115,11 @@ async function main() {
     const signed = await bkey.pollX402Authorization(auth.authorizationId, {
       timeoutMs: 120_000,
     });
-    signedPayload = signed.signedPayload!;
+    if (!signed.signedPayload) {
+      console.error('x402 poll resolved without a signed payload.');
+      process.exit(1);
+    }
+    signedPayload = signed.signedPayload;
     console.log(`Signed by: ${signed.fromAddress}\n`);
   } else {
     console.error('Unexpected authorization response:', auth);

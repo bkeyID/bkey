@@ -3,7 +3,13 @@
 import type { BKey } from './client.js';
 import type { AccessStatus, CheckoutStatus, StoreStatus } from './types.js';
 
-const POLL_INTERVAL_MS = 2000;
+/**
+ * Shared polling defaults. `client.ts` pulls from here too, so a single edit
+ * keeps the standalone helpers and BKey method defaults in lockstep.
+ */
+export const POLL_INTERVAL_MS = 2000;
+export const DEFAULT_APPROVAL_TIMEOUT_MS = 300_000;
+
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export async function pollAccessRequest(
@@ -100,16 +106,16 @@ import type { X402PollResponse } from './types.js';
  * @param apiUrl - BKey API base URL
  * @param token - OAuth access token
  * @param authorizationId - Authorization ID from POST /v1/x402/authorize
- * @param timeoutMs - Maximum wait time (default: 300s — matches the CIBA
- *                    approval request lifetime, so we don't give up while
- *                    the phone prompt is still live)
+ * @param timeoutMs - Maximum wait time (default matches the CIBA approval
+ *                    request lifetime, so we don't give up while the phone
+ *                    prompt is still live)
  * @returns Signed payload for use as PAYMENT-SIGNATURE header
  */
 export async function pollX402Authorization(
   apiUrl: string,
   token: string,
   authorizationId: string,
-  timeoutMs = 300_000,
+  timeoutMs = DEFAULT_APPROVAL_TIMEOUT_MS,
 ): Promise<X402PollResponse> {
   const deadline = Date.now() + timeoutMs;
   const url = `${apiUrl.replace(/\/$/, '')}/v1/x402/authorize/${encodeURIComponent(authorizationId)}`;

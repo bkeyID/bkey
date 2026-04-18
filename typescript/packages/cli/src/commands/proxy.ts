@@ -4,7 +4,23 @@ import { Command } from 'commander';
 import { createDecipheriv, createHash } from 'node:crypto';
 import { x25519 } from '@noble/curves/ed25519';
 import { requireConfig } from '../lib/config.js';
+import type { X402AuthorizeResponse, MppAuthorizeResponse } from '@bkey/sdk';
 import { BKey, pollAccessRequest } from '@bkey/sdk';
+
+/**
+ * Stream a paid-retry response to stdout and propagate its exit status.
+ * Shared between the four payment retry branches (x402 auto/CIBA, MPP auto/CIBA)
+ * to avoid drift between parallel copy-pasted blocks.
+ */
+async function streamPaidResponse(res: Response): Promise<never | void> {
+  const ct = res.headers.get('content-type') ?? '';
+  const body = ct.includes('json')
+    ? JSON.stringify(await res.json(), null, 2)
+    : await res.text();
+  process.stdout.write(body);
+  if (!body.endsWith('\n')) process.stdout.write('\n');
+  if (!res.ok) process.exit(1);
+}
 
 /** Parse EIP-155 chain ID from x402 network field (e.g., 'eip155:8453' → 8453). */
 function parseChainId(network?: string): number {
@@ -251,12 +267,12 @@ export const proxyCommand = new Command('proxy')
               limitCurrency: 'USD',
               description: paymentRequired.description ?? `Pay for ${url}`,
               resource: paymentRequired.resource ?? url,
-            })) as { status: string; authorizationId?: string };
+            })) as X402AuthorizeResponse;
 
-            if (authRes.status === 'authorized' && (authRes as any).authorization) {
+            if (authRes.status === 'authorized' && authRes.authorization) {
               console.error('✅ Auto-approved. Retrying with payment...');
               const signedPayload = Buffer.from(
-                JSON.stringify((authRes as any).authorization),
+                JSON.stringify(authRes.authorization),
               ).toString('base64');
               const paidRes = await fetch(url, {
                 method: method.toUpperCase(),
@@ -264,16 +280,7 @@ export const proxyCommand = new Command('proxy')
                 body: opts.data ?? undefined,
                 signal: AbortSignal.timeout(60_000),
               });
-
-              const paidContentType = paidRes.headers.get('content-type') ?? '';
-              const paidBody = paidContentType.includes('json')
-                ? JSON.stringify(await paidRes.json(), null, 2)
-                : await paidRes.text();
-
-              process.stdout.write(paidBody);
-              if (!paidBody.endsWith('\n')) process.stdout.write('\n');
-
-              if (!paidRes.ok) process.exit(1);
+              await streamPaidResponse(paidRes);
               return;
             } else if (authRes.authorizationId) {
               console.error('📱 Biometric approval required — check your phone.');
@@ -283,33 +290,41 @@ export const proxyCommand = new Command('proxy')
                 authRes.authorizationId,
                 { timeoutMs },
               );
+              if (!signed.signedPayload) {
+                throw new Error('x402 poll resolved without a signed payload');
+              }
 
               // Retry the original request with the payment signature
               console.error('✅ Approved. Retrying with payment...');
               const paidRes = await fetch(url, {
                 method: method.toUpperCase(),
-                headers: { ...resolvedHeaders, 'PAYMENT-SIGNATURE': signed.signedPayload! },
+                headers: { ...resolvedHeaders, 'PAYMENT-SIGNATURE': signed.signedPayload },
                 body: opts.data ?? undefined,
                 signal: AbortSignal.timeout(60_000),
               });
-
-              const paidContentType = paidRes.headers.get('content-type') ?? '';
-              const paidBody = paidContentType.includes('json')
-                ? JSON.stringify(await paidRes.json(), null, 2)
-                : await paidRes.text();
-
-              process.stdout.write(paidBody);
-              if (!paidBody.endsWith('\n')) process.stdout.write('\n');
-
-              if (!paidRes.ok) process.exit(1);
+              await streamPaidResponse(paidRes);
               return;
+            } else {
+              // Backend returned pending_approval with neither authorizationId
+              // nor an authorization payload we can use — don't silently
+              // exit 0 as if nothing happened.
+              console.error(
+                `x402 authorize: backend returned status=${authRes.status} with no ` +
+                  `authorizationId or authorization payload — cannot poll. ` +
+                  `(authReqId=${authRes.authReqId ?? '-'})`,
+              );
+              process.exit(1);
             }
           } catch (payErr) {
             console.error(`x402 payment failed: ${(payErr as Error).message}`);
             process.exit(1);
           }
         } else {
-          // Check for MPP (Stripe) payment requirement
+          // MPP uses `X-Payment-Required` (raw JSON in the header value) rather
+          // than x402's `PAYMENT-REQUIRED` (base64-encoded JSON). That's per
+          // protocol: MPP's payload is small enough to fit inline; x402's
+          // binary-adjacent fields (BigInt amounts, EVM addresses) round-trip
+          // more reliably through base64.
           const mppHeader = res.headers.get('x-payment-required');
           if (mppHeader) {
             console.error('\n💳 Payment required (MPP/Stripe). Initiating authorization...');
@@ -323,7 +338,7 @@ export const proxyCommand = new Command('proxy')
                 merchantName: mppRequired.merchantName,
                 description: mppRequired.description,
                 resource: url,
-              })) as { status: string; sptId?: string; authorizationId?: string; expiresAt?: string };
+              })) as MppAuthorizeResponse;
 
               // MPP retries: present the SPT in both an `X-Payment-Spt` header
               // and (for body-carrying methods) a JSON body field, so we work
@@ -338,33 +353,30 @@ export const proxyCommand = new Command('proxy')
                   headers: resolvedHeaders,
                   body: opts.data,
                 }, mppAuthRes.sptId));
-
-                const paidBody = (paidRes.headers.get('content-type') ?? '').includes('json')
-                  ? JSON.stringify(await paidRes.json(), null, 2)
-                  : await paidRes.text();
-                process.stdout.write(paidBody);
-                if (!paidBody.endsWith('\n')) process.stdout.write('\n');
-                if (!paidRes.ok) process.exit(1);
+                await streamPaidResponse(paidRes);
                 return;
               } else if (mppAuthRes.authorizationId) {
                 console.error('📱 Biometric approval required — check your phone.');
                 const mppSigned = await api.pollMppAuthorization(mppAuthRes.authorizationId, { timeoutMs });
+                if (!mppSigned.sptCredential) {
+                  throw new Error('MPP poll resolved without an SPT credential');
+                }
 
                 console.error('✅ Approved. Retrying with SPT...');
-                const sptData = JSON.parse(Buffer.from(mppSigned.sptCredential!, 'base64').toString());
+                const sptData = JSON.parse(Buffer.from(mppSigned.sptCredential, 'base64').toString());
                 const paidRes = await fetch(url, mergeSptIntoRequest({
                   method: method.toUpperCase(),
                   headers: resolvedHeaders,
                   body: opts.data,
                 }, sptData.sptId));
-
-                const paidBody = (paidRes.headers.get('content-type') ?? '').includes('json')
-                  ? JSON.stringify(await paidRes.json(), null, 2)
-                  : await paidRes.text();
-                process.stdout.write(paidBody);
-                if (!paidBody.endsWith('\n')) process.stdout.write('\n');
-                if (!paidRes.ok) process.exit(1);
+                await streamPaidResponse(paidRes);
                 return;
+              } else {
+                console.error(
+                  `MPP authorize: backend returned status=${mppAuthRes.status} with no ` +
+                    `authorizationId or sptId — cannot proceed.`,
+                );
+                process.exit(1);
               }
             } catch (mppErr) {
               console.error(`MPP payment failed: ${(mppErr as Error).message}`);

@@ -18,6 +18,7 @@ import type {
   MppAuthorizeResponse,
   MppPollResponse,
 } from './types.js';
+import { POLL_INTERVAL_MS, DEFAULT_APPROVAL_TIMEOUT_MS } from './poll.js';
 
 /**
  * BKey SDK client.
@@ -432,10 +433,10 @@ export class BKey {
     authorizationId: string,
     opts?: { intervalMs?: number; timeoutMs?: number },
   ): Promise<X402PollResponse> {
-    const intervalMs = opts?.intervalMs ?? 2000;
+    const intervalMs = opts?.intervalMs ?? POLL_INTERVAL_MS;
     // Default matches the CIBA approval request lifetime (5 min) so we don't
     // stop polling while the phone prompt is still live. Callers can override.
-    const timeoutMs = opts?.timeoutMs ?? 300_000;
+    const timeoutMs = opts?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
@@ -494,10 +495,10 @@ export class BKey {
     authorizationId: string,
     opts?: { intervalMs?: number; timeoutMs?: number },
   ): Promise<MppPollResponse> {
-    const intervalMs = opts?.intervalMs ?? 2000;
+    const intervalMs = opts?.intervalMs ?? POLL_INTERVAL_MS;
     // Default matches the CIBA approval request lifetime (5 min) so we don't
     // stop polling while the phone prompt is still live. Callers can override.
-    const timeoutMs = opts?.timeoutMs ?? 300_000;
+    const timeoutMs = opts?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
