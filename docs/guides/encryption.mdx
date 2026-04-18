@@ -36,7 +36,7 @@ Say you're building an agent that reads a vault secret and uses it to deploy to 
 ┌─── your agent (server) ────────┐      ┌─── BKey ────┐      ┌─── user's phone ───┐
 │                                 │      │             │      │                    │
 │  1. @bkey/sdk → bkey.approve()─── TLS ─▶ issue CIBA ─ push ─▶ biometric prompt   │
-│                                 │      │             │      │   (Face ID)        │
+│                                 │      │             │      │   (face scan)      │
 │                                 │      │             │ ◀─── signed consent ──┤   │
 │  3. ◀── EdDSA JWT access token ── TLS ─│             │      │                    │
 │                                 │      │             │      │                    │
@@ -56,7 +56,7 @@ Say you're building an agent that reads a vault secret and uses it to deploy to 
 ### Step-by-step
 
 **1–3. Approval request (CIBA):**
-`bkey.approve()` (TypeScript) or `client.approve()` (Python) starts here. Traffic to BKey is **TLS 1.2+**. BKey pushes a prompt to the phone; the phone **signs** the consent with the device's Ed25519 key (gated on Face ID) and returns the signature through the same channel. BKey wraps it in a JWT signed by the issuer's Ed25519 key.
+`bkey.approve()` (TypeScript) or `client.approve()` (Python) starts here. Traffic to BKey is **TLS 1.2+**. BKey pushes a prompt to the phone; the phone **signs** the consent with the device's Ed25519 key (gated on facial biometrics) and returns the signature through the same channel. BKey wraps it in a JWT signed by the issuer's Ed25519 key.
 
 **4. Token verification:**
 Never trust the JWT on your side until you call `verifyToken()` from `@bkey/node` (or equivalent). That library fetches BKey's public keys from `/oauth/jwks` — cached 5 minutes, refetched on `kid` miss — and verifies the EdDSA signature, `iss`, `exp`, `aud`, and required scopes. No HS256 confusion, no `alg: none`. See the [verifyToken](/guides/mcp-integration#what-verifytoken-actually-checks) reference.
@@ -65,7 +65,7 @@ Never trust the JWT on your side until you call `verifyToken()` from `@bkey/node
 Your SDK generates an **ephemeral X25519 key pair** (one per request). It sends the public key in the access request. The request is bound to `challenge || itemName || purpose || ephemeralPubKey` so a compromised backend can't swap the key mid-flight.
 
 **6. Phone re-encrypts to your ephemeral key:**
-After Face ID unlocks the vault key, the phone runs X25519 ECDH with your ephemeral public key, derives `aesKey = SHA-256(sharedSecret)`, and encrypts the plaintext with AES-256-GCM. The ciphertext format is:
+After facial biometrics unlock the vault key, the phone runs X25519 ECDH with your ephemeral public key, derives `aesKey = SHA-256(sharedSecret)`, and encrypts the plaintext with AES-256-GCM. The ciphertext format is:
 
 ```
 phonePubKey(32) || iv(12) || authTag(16) || ciphertext
@@ -112,7 +112,7 @@ Agent payments use a different path — the value at stake is an on-chain USDC t
 
 1. Your agent calls `bkey.authorizeX402Payment({ amountCents, recipientAddress, chainId })`.
 2. If within the per-agent spending limit → auto-approved, BKey returns an **EIP-3009 `TransferWithAuthorization`** payload signed with the user's **secp256k1** wallet key.
-3. If above the limit → CIBA biometric prompt. After Face ID, same signed payload, same format.
+3. If above the limit → CIBA biometric prompt. After the user approves, same signed payload, same format.
 4. Signed payloads are **stored at rest** encrypted with AES-256-GCM using a server-held DEK. This is defence-in-depth — the payload is already short-lived and publicly verifiable on-chain once submitted — but it means a DB leak doesn't leak spend authorizations.
 5. Validity window: **< 5 minutes**. Front-run resistance comes from EIP-3009's `ReceiveWithAuthorization` variant where supported.
 

@@ -200,7 +200,7 @@ x402 has no percentage fee. USDC is 1:1 with USD, no FX loss. Settlement is fina
 2. BKey decodes: `{ maxAmountRequired, payTo, network, description, resource }`.
 3. BKey calls `POST /v1/x402/authorize` with the amount + recipient.
 4. If within the per-agent spending limit → **auto-approved**, BKey signs an **EIP-3009 `ReceiveWithAuthorization`** payload with the user's on-device secp256k1 key.
-5. If above the limit → BKey sends a **biometric push**; after Face ID, the same signed payload is produced.
+5. If above the limit → BKey sends a **biometric push**; after the user approves with facial biometrics, the same signed payload is produced.
 6. Agent retries with `PAYMENT-SIGNATURE: <base64 EIP-3009>`.
 7. Server verifies via the Coinbase facilitator, settles on-chain, returns the resource.
 
