@@ -1,29 +1,124 @@
 ---
-title: Device Authorization
-description: Human login via QR code — RFC 8628 device authorization flow.
+title: CLI Authentication
+description: How humans log into the BKey CLI (RFC 8628 device authorization) and how they mint client credentials for agents.
 ---
 
-# Device Authorization
+# CLI Authentication
 
-For human login from CLIs, terminals, and devices without a browser. The user scans a QR code on their phone to approve.
+Two flows end up issuing a token the CLI can use:
 
-## When to Use
+- **For Humans** — `bkey auth login` uses [RFC 8628 device authorization](https://datatracker.ietf.org/doc/html/rfc8628): display a code, scan a QR on your phone, approve with biometrics.
+- **For Agents** — `bkey auth setup-agent` mints OAuth `client_credentials` so a headless agent or CI job can authenticate without a human in the loop on every request.
 
-- CLI tools (`bkey auth login`)
-- IoT devices
-- SSH sessions
+> Agents still need a human to create them. You have to `bkey auth login` once as a human before you can run `setup-agent` — the new agent is gated on a biometric approval from your phone before the credentials are issued.
 
-## Flow
+---
 
-1. Client requests a device code
-2. User scans QR code / opens URL on phone
-3. User approves on phone with biometrics
-4. Client polls for the token
+## For Humans
 
-## CLI Usage
+Interactive login from any terminal. Uses the device authorization flow so you can log in on a machine that has no browser (SSH, CI debug shell, IoT device, etc.) by approving on your phone.
+
+### Usage
 
 ```bash
 bkey auth login
 ```
 
-This displays a QR code. Scan it with the BKey mobile app, approve with facial biometrics, and the CLI receives a session token.
+The CLI prints a short user code and a verification URL, opens the URL in your browser with the code pre-filled, and starts polling. On your phone:
+
+1. Open the BKey app (or follow the URL on a phone browser).
+2. Confirm the user code matches.
+3. Approve with facial biometrics.
+
+The CLI unblocks the moment the phone completes approval and writes a session token to `~/.bkey/config.json`. Subsequent `bkey …` commands use it automatically.
+
+### Flow at the protocol level
+
+1. Client calls `POST /oauth/device_authorization` and receives `device_code`, `user_code`, `verification_uri`.
+2. User visits the URL on their phone and enters the code, or scans the QR.
+3. User approves with facial biometrics.
+4. Client polls `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code` until it gets an access token.
+
+Use cases:
+
+- CLI tools (`bkey auth login`)
+- SSH sessions and CI debug shells
+- IoT devices with no browser
+
+---
+
+## For Agents
+
+Agents authenticate with the OAuth 2.1 **client credentials** grant — one `client_id` + `client_secret` per agent, no phone roundtrip on every call. The credentials are minted by a human running `bkey auth setup-agent` after they're logged in.
+
+### Minting agent credentials
+
+```bash
+# Requires a prior `bkey auth login` (human must be logged in)
+bkey auth setup-agent --name "My Deploy Bot" --save
+```
+
+- Pushes an approval prompt to the logged-in human's phone (approving the agent's scopes with biometrics).
+- On approval, BKey returns the agent's `client_id` + `client_secret`.
+- `--save` writes them to `~/.bkey/agent.json` so the CLI can act as the agent automatically.
+- `--json` prints them to stdout instead (for CI secret setup, env vars, etc.).
+
+### Running as an agent
+
+Once saved (or exported as env vars), the CLI uses agent mode automatically:
+
+```bash
+export BKEY_CLIENT_ID=$(jq -r .clientId ~/.bkey/agent.json)
+export BKEY_CLIENT_SECRET=$(jq -r .clientSecret ~/.bkey/agent.json)
+
+# No phone roundtrip — direct client_credentials exchange
+bkey approve "Deploy api-gateway@abc123 to prod" \
+  --scope approve:deploy \
+  --user-did did:bkey:...
+```
+
+### In code (Python / TypeScript)
+
+```typescript
+import { BKey } from '@bkey/sdk';
+
+const bkey = new BKey({
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET!,
+});
+
+// Token is exchanged + refreshed automatically.
+```
+
+```python
+from bkey import BKeyClient
+
+client = BKeyClient(
+    client_id=os.environ["BKEY_CLIENT_ID"],
+    client_secret=os.environ["BKEY_CLIENT_SECRET"],
+)
+```
+
+### Default scopes
+
+`bkey auth setup-agent` includes a sensible default scope set (`vault:access`, `vault:store`, `signing:create`, `signing:read`, `identity:read`, `approve:action`, `approve:payment`, `payment:authorize`, `payment:address`, `payment:limits`). Override with `--scopes <comma-separated>` to tighten or expand.
+
+Use cases:
+
+- Headless agents (e.g. a cron job that calls paid APIs)
+- Server-to-server communication
+- CI pipelines making authenticated calls
+- MCP servers verifying CIBA approval tokens
+
+### What agents *can't* do on their own
+
+Agent tokens from `client_credentials` don't grant per-action authority by themselves. For anything sensitive (payments, vault access, deploys), the agent must still initiate a [CIBA](/authentication/ciba) approval — the human gets a push and approves with biometrics, the agent gets a short-lived, scope-bound token proving that consent. See the [CIBA guide](/authentication/ciba) for the one-line `approve()` pattern.
+
+---
+
+## See also
+
+- [Client Credentials](/authentication/client-credentials) — raw protocol details for the agent grant
+- [CIBA](/authentication/ciba) — per-action biometric approval (what agents use once they have a base token)
+- [Authentication overview](/authentication/overview) — all three grant types at a glance
+- [CLI reference](/sdk/cli) — `bkey auth`, `bkey approve`, `bkey proxy`, `bkey wrap`, etc.
