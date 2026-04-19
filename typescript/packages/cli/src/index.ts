@@ -8,6 +8,7 @@ import { proxyCommand } from './commands/proxy.js';
 import { wrapCommand } from './commands/wrap.js';
 import { checkoutCommand } from './commands/checkout.js';
 import { approveCommand } from './commands/approve.js';
+import { profilesCommand } from './commands/profiles.js';
 import { BUILD_VERSION, BUILD_COMMIT, BUILD_DATE } from './lib/build-info.js';
 
 const program = new Command();
@@ -27,6 +28,7 @@ program
   });
 
 program.addCommand(authCommand);
+program.addCommand(profilesCommand);
 program.addCommand(vaultCommand);
 program.addCommand(proxyCommand);
 program.addCommand(wrapCommand);

@@ -17,14 +17,20 @@ vaultCommand
   .option('--description <desc>', 'Item description')
   .option('--tags <tags...>', 'Tags for the item')
   .option('--website <url>', 'Associated website URL')
+  .option('--agent', 'Force agent mode')
+  .option('--human', 'Force human mode (default)')
+  .option('--profile <name>', 'Profile to use within the selected principal')
   .action(async (name: string, opts: {
     type: string;
     field?: string[];
     description?: string;
     tags?: string[];
     website?: string;
+    agent?: boolean;
+    human?: boolean;
+    profile?: string;
   }) => {
-    const config = requireConfig();
+    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
     const api = new BKey(config);
 
     // parse --field key=value pairs into a JSON object
@@ -113,8 +119,11 @@ vaultCommand
   .command('list')
   .description('List vault items (metadata only)')
   .option('--type <type>', 'Filter by item type')
-  .action(async (opts: { type?: string }) => {
-    const config = requireConfig();
+  .option('--agent', 'Force agent mode')
+  .option('--human', 'Force human mode (default)')
+  .option('--profile <name>', 'Profile to use within the selected principal')
+  .action(async (opts: { type?: string; agent?: boolean; human?: boolean; profile?: string }) => {
+    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
     const api = new BKey(config);
 
     try {

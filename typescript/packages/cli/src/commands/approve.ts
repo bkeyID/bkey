@@ -1,20 +1,21 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
-import { requireConfig } from '../lib/config.js';
+import { loadActiveHumanProfile, requireConfig } from '../lib/config.js';
 import { BKey } from '@bkey/sdk';
 
 export const approveCommand = new Command('approve')
   .description('Request biometric approval from a user via CIBA push notification')
   .argument('<message>', 'Binding message shown to the user (e.g. "Deploy to production")')
   .option('--scope <scope>', 'Approval scope', 'approve:action')
-  .option('--user-did <did>', 'User DID to request approval from')
+  .option('--user-did <did>', 'User DID to request approval from (falls back to the active human profile\'s saved DID)')
   .option('--amount <cents>', 'Amount in cents (for payment approvals)', parseInt)
   .option('--currency <code>', 'Currency code', 'USD')
   .option('--resource <name>', 'Resource being accessed')
   .option('--recipient <name>', 'Recipient of the action')
   .option('--description <text>', 'Action description')
   .option('--timeout <seconds>', 'Timeout in seconds', parseInt)
+  .option('--profile <name>', 'Agent profile to use (default: saved default agent)')
   .option('--json', 'Output result as JSON')
   .action(async (message: string, opts: {
     scope: string;
@@ -25,9 +26,11 @@ export const approveCommand = new Command('approve')
     recipient?: string;
     description?: string;
     timeout?: number;
+    profile?: string;
     json?: boolean;
   }) => {
-    const config = requireConfig();
+    // approve is agent-only by nature — force the principal.
+    const config = requireConfig({ principal: 'agent', profile: opts.profile });
 
     if (!config.clientId || !config.clientSecret) {
       console.error('approve requires agent mode (client_id + client_secret).');
@@ -38,9 +41,12 @@ export const approveCommand = new Command('approve')
     const api = new BKey(config);
     const timeoutMs = (opts.timeout ?? 300) * 1000;
 
-    const userDid = opts.userDid ?? config.did;
+    // Target DID (who to ask) resolution: --user-did flag > active human profile DID > error.
+    const savedDid = loadActiveHumanProfile()?.did;
+    const userDid = opts.userDid ?? savedDid;
     if (!userDid) {
-      console.error('No user DID specified. Use --user-did or set a saved DID (from prior auth).');
+      console.error('No user DID specified.');
+      console.error('Pass --user-did <did:bkey:...>, or run `bkey auth login` to save a default target.');
       process.exit(1);
     }
 

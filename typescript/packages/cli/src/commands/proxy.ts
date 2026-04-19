@@ -158,13 +158,19 @@ export const proxyCommand = new Command('proxy')
   .option('--data <body>', 'Request body (JSON string)')
   .option('--purpose <purpose>', 'Purpose description for approval notification', 'CLI proxy request')
   .option('--timeout <seconds>', 'Approval timeout in seconds', '120')
+  .option('--agent', 'Force agent mode')
+  .option('--human', 'Force human mode (default)')
+  .option('--profile <name>', 'Profile to use within the selected principal')
   .action(async (method: string, url: string, opts: {
     header?: string[];
     data?: string;
     purpose: string;
     timeout: string;
+    agent?: boolean;
+    human?: boolean;
+    profile?: string;
   }) => {
-    const config = requireConfig();
+    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
     const api = new BKey(config);
     const headers = opts.header ?? [];
 
