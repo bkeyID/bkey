@@ -18,6 +18,13 @@ class BKeySettings : PersistentStateComponent<BKeySettings> {
     var userDid: String = ""
     var includeDiffSummary: Boolean = true
 
+    /**
+     * Named agent profile in ~/.bkey/profiles.json (CLI ≥ 0.3.0). Empty means
+     * "use the CLI's default agent profile". Multiple-agent setups put e.g.
+     * `ide-agent` here; single-agent users can leave it blank.
+     */
+    var agentProfile: String = ""
+
     override fun getState(): BKeySettings = this
 
     override fun loadState(state: BKeySettings) {

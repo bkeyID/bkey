@@ -96,10 +96,20 @@ Or run a sandbox IDE with the plugin pre-loaded:
 | --- | --- | --- |
 | Require BKey approval for commits | `true` | Master switch |
 | bkey CLI path | `bkey` | Full path if not on PATH (e.g. `/usr/local/bin/bkey`) |
+| Agent profile | *(empty)* | Named agent profile to use (CLI ≥ 0.3.0). Empty = CLI's default agent. |
 | Approval scope | `approve:git.commit` | CIBA scope passed to `--scope` |
 | Timeout (seconds) | `120` | Max wait for phone approval |
 | User DID | *(empty)* | Override `--user-did`; empty = CLI falls back to the logged-in session's DID |
 | Include diff summary | `true` | Append file list to the binding message |
+
+### Multiple agents
+
+CLI 0.3.0 lets one machine hold multiple named agent profiles
+(`bkey profiles list`). If you've created one specifically for your IDE
+(e.g. `bkey auth setup-agent --save --name "IDE Agent"` saves as `ide-agent`),
+put that identifier in the **Agent profile** field. The plugin then always
+runs as that agent regardless of what `bkey profiles use --agent` is set to
+on your shell, so the IDE's audit trail stays clean and isolated.
 
 ## Use
 

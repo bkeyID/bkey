@@ -14,6 +14,7 @@ class BKeyConfigurable : Configurable {
     private val scope = JBTextField()
     private val timeoutSeconds = JBTextField()
     private val userDid = JBTextField()
+    private val agentProfile = JBTextField()
 
     override fun getDisplayName() = "BKey Approval"
 
@@ -25,10 +26,12 @@ class BKeyConfigurable : Configurable {
         scope.text = settings.scope
         timeoutSeconds.text = settings.timeoutSeconds.toString()
         userDid.text = settings.userDid
+        agentProfile.text = settings.agentProfile
 
         return FormBuilder.createFormBuilder()
             .addComponent(enabled)
             .addLabeledComponent("bkey CLI path:", cliPath)
+            .addLabeledComponent("Agent profile (blank = CLI default):", agentProfile)
             .addLabeledComponent("Approval scope:", scope)
             .addLabeledComponent("Timeout (seconds):", timeoutSeconds)
             .addLabeledComponent("User DID (optional):", userDid)
@@ -44,7 +47,8 @@ class BKeyConfigurable : Configurable {
             cliPath.text != s.cliPath ||
             scope.text != s.scope ||
             timeoutSeconds.text != s.timeoutSeconds.toString() ||
-            userDid.text != s.userDid
+            userDid.text != s.userDid ||
+            agentProfile.text != s.agentProfile
     }
 
     override fun apply() {
@@ -55,6 +59,7 @@ class BKeyConfigurable : Configurable {
         s.scope = scope.text.trim().ifEmpty { "approve:git.commit" }
         s.timeoutSeconds = timeoutSeconds.text.trim().toIntOrNull()?.coerceIn(10, 900) ?: 120
         s.userDid = userDid.text.trim()
+        s.agentProfile = agentProfile.text.trim()
     }
 
     override fun reset() {
@@ -65,5 +70,6 @@ class BKeyConfigurable : Configurable {
         scope.text = s.scope
         timeoutSeconds.text = s.timeoutSeconds.toString()
         userDid.text = s.userDid
+        agentProfile.text = s.agentProfile
     }
 }

@@ -33,9 +33,13 @@ object BKeyCliRunner {
             // Always run the CLI in agent mode. Works against CLIs ≥ 0.3.0
             // (which honor BKEY_MODE=agent explicitly) and ≤ 0.2.x (which
             // silently prefer agent.json anyway — harmless no-op env var).
-            // We avoid `--agent` on the command line so we don't break older
-            // CLIs with an unknown flag.
             environment["BKEY_MODE"] = "agent"
+            // Optional profile selector — CLI ≥ 0.3.0 only. Use env rather than
+            // --profile on the command line so older CLIs don't reject it with
+            // an unknown-flag error.
+            if (settings.agentProfile.isNotBlank()) {
+                environment["BKEY_PROFILE"] = settings.agentProfile
+            }
             if (workingDirectory != null) {
                 setWorkDirectory(workingDirectory)
             }
