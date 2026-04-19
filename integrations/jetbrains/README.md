@@ -14,48 +14,59 @@ commit on their own. That speed is great — until an agent commits something yo
 wouldn't have. This plugin puts a human-in-the-loop gate on the single
 highest-leverage action: the commit itself.
 
-Because the plugin hooks the IDE's VCS pipeline (`CheckinHandler`), it fires for
-every commit regardless of origin. Human, AI agent, keyboard shortcut — all
-funnel through the same BKey approval.
-
 ## How it works
 
+The plugin installs **two** complementary gates so every commit goes through
+BKey approval regardless of how it was triggered:
+
 ```
-AI agent / you click "Commit"
-        │
-        ▼
-  IntelliJ CheckinHandler  ──► bkey approve "<commit msg> [files…]"
-                                       │
-                                       ▼
-                                Phone push notification
-                                       │
-                                       ▼
-                             Face ID → approved / denied
-                                       │
-        ┌──────────────────────────────┘
-        ▼
-  Commit proceeds (or is cancelled)
+  ┌─────────────────────────────┐     ┌─────────────────────────────┐
+  │  Commits from the IDE UI    │     │  Commits from a terminal    │
+  │  (⌘K, Commit button, …)     │     │  (AI agents, shell, …)      │
+  └─────────────┬───────────────┘     └─────────────┬───────────────┘
+                │                                   │
+                ▼                                   ▼
+   IntelliJ CheckinHandler               .git/hooks/commit-msg
+   (in the plugin)                       (plugin-installed bash hook)
+                │                                   │
+                └───────────────┬───────────────────┘
+                                ▼
+                    bkey approve "<commit message>"
+                                │
+                                ▼
+                        Phone push notification
+                                │
+                                ▼
+                       Face ID → approved / denied
+                                │
+                                ▼
+                    Commit proceeds (or is cancelled)
 ```
 
 The plugin is a thin wrapper around the `bkey` CLI. All OAuth/CIBA state lives
-in the CLI's existing device-auth session — no separate login inside the IDE.
+in the CLI's existing profile store (`~/.bkey/profiles.json`) — no separate
+login inside the IDE.
 
 ## Prerequisites
 
-1. BKey CLI **≥ 0.3.0**, authenticated as both human and agent:
+1. BKey CLI **≥ 0.3.0**, authenticated as both a human and an agent:
 
    ```bash
    npm install -g @bkey/cli
-   bkey auth login                  # 1. human session — provides the user DID
-   bkey auth setup-agent --save     # 2. agent OAuth client — signs CIBA requests
+
+   # 1. Human session — gives the CLI your DID (approval target)
+   bkey auth login
+
+   # 2. Agent OAuth client — signs CIBA requests from the plugin
+   bkey auth setup-agent --save --name "IDE Agent" --scopes approve:action
    ```
 
-   Both coexist (`~/.bkey/config.json` + `~/.bkey/agent.json`). The plugin sets
+   Both coexist as named profiles in `~/.bkey/profiles.json`. The plugin sets
    `BKEY_MODE=agent` when shelling out, so it always runs as the agent without
    clobbering your terminal's human session.
 
-   Verify: `bkey auth status` (human) and `bkey auth status --agent` (agent)
-   both show credentials.
+   Verify: `bkey profiles` lists both; `bkey approve "test" --scope approve:action --json`
+   should push to your phone.
 
 2. A JetBrains IDE on build **243** (2024.3) or newer.
 
@@ -87,6 +98,37 @@ Or run a sandbox IDE with the plugin pre-loaded:
 
 > First build requires a JDK 17+ and downloads the IntelliJ Platform SDK
 > (~1 GB). If you don't have `gradlew`, run `gradle wrapper` once to generate it.
+
+## Setup walkthrough
+
+Once the plugin is installed and the CLI prerequisites are in place
+(`bkey auth login` + `bkey auth setup-agent --save`), configure the plugin and
+turn on the commit-msg hook.
+
+**1. Open the plugin's settings:** `Settings → Tools → BKey Approval`.
+
+Leave the defaults as they are for a typical setup. The fields worth knowing about:
+
+- **bkey CLI path** — `bkey` if it's on your `PATH`, or the absolute path (e.g. `/opt/homebrew/bin/bkey`).
+- **Agent profile** — leave blank to use the CLI's default agent. Fill in a profile name if you created a dedicated agent for the IDE (`bkey auth setup-agent --save --name "IDE Agent"` → slug `ide-agent`).
+- **Approval scope** — `approve:action`. Must be a scope the agent was granted.
+- **Include diff summary** — appends a short file list to the binding message so your phone prompt shows *what* the commit touches.
+
+**2. Install the commit-msg hook.** The **Git commit-msg hook** section at the bottom of the settings page is what catches commits issued by AI agents that shell out to `git commit` (Codex, Junie, Claude Code). Click **Install in all open projects**; the status line lists each project and its hook state.
+
+Optionally check **Auto-install commit-msg hook in every opened git project** so the plugin installs it for you on future project opens. The plugin never clobbers a non-BKey hook you already wrote — it refuses and logs a skip.
+
+**3. Try it.** Ask your AI agent of choice to make a commit. The agent shells out to `git commit` → the hook fires → `bkey approve` pushes to your phone → tap Face ID → commit lands. The Codex output on success looks like:
+
+```
+git add index.js && git commit -m "Add comment for status log"
+bkey hook: approved.
+[master 89dd629] Add comment for status log
+ 1 file changed, 1 insertion(+)
+✓ Done
+```
+
+That's it. Every commit in the repo — from the IDE UI, from a terminal, from Codex's subshell — is now gated on a biometric approval.
 
 ## Configure
 
