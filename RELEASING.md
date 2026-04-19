@@ -29,8 +29,11 @@ Only bump the package you're releasing:
 
 # For bkey-sdk (Python)
 # Edit: python/pyproject.toml → version = "0.2.0"
-# Edit: python/bkey/__init__.py → __version__ = "0.2.0"
 ```
+
+> The CLI's `bkey version` output and `bkey.__version__` are derived from
+> `package.json` / `pyproject.toml` at build/import time — you do not need to
+> edit any source file separately.
 
 ### 2. Commit and push
 
