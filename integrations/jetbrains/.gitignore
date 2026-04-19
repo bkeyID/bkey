@@ -5,3 +5,4 @@ out/
 *.iml
 .kotlin/
 local.properties
+.intellijPlatform/
