@@ -1,0 +1,41 @@
+<idea-plugin>
+    <id>id.bkey.approval</id>
+    <name>BKey Approval</name>
+    <vendor url="https://bkey.id" email="hello@bkey.id">BKey</vendor>
+
+    <description><![CDATA[
+        Biometric approval for git commits via BKey CIBA.
+        <br/><br/>
+        Every commit (human or AI agent — Junie, Codex, Copilot) triggers a push
+        notification to your phone. Approve with Face ID to continue, deny to
+        block the commit.
+        <br/><br/>
+        Requires the <code>bkey</code> CLI to be installed and authenticated.
+        See <a href="https://github.com/bkeyID/bkey/tree/main/integrations/jetbrains">integrations/jetbrains</a>
+        for setup.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.vcs</depends>
+    <depends>Git4Idea</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <checkinHandlerFactory
+            implementation="id.bkey.jetbrains.BKeyCheckinHandlerFactory"/>
+
+        <applicationService
+            serviceImplementation="id.bkey.jetbrains.settings.BKeySettings"/>
+
+        <applicationConfigurable
+            parentId="tools"
+            id="id.bkey.jetbrains.settings.BKeyConfigurable"
+            displayName="BKey Approval"
+            instance="id.bkey.jetbrains.settings.BKeyConfigurable"/>
+
+        <notificationGroup
+            id="BKey"
+            displayType="BALLOON"
+            bundle="messages.BKeyBundle"
+            key="notification.group.bkey"/>
+    </extensions>
+</idea-plugin>

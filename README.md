@@ -25,6 +25,11 @@ pip install bkey-sdk[all]     # Everything
 
 Go and Rust SDKs are in development. The `bkey` name is reserved on [crates.io](https://crates.io/crates/bkey). See [roadmap](#repository-structure) for status.
 
+### JetBrains IDE plugin
+
+Biometric approval gate on every git commit — works for human commits and AI
+agents (Junie, Codex, AI Assistant) alike. See [integrations/jetbrains](./integrations/jetbrains/).
+
 ## Quick Start
 
 ### Request biometric approval (CIBA)
@@ -91,13 +96,14 @@ bkey checkout request --merchant "Store" --amount 29.99 --currency USD
 ## Repository Structure
 
 ```
-typescript/     TypeScript SDK + CLI (pnpm monorepo)
-python/         Python SDK
-rust/           Rust SDK (name reserved on crates.io)
-skills/         Agent skills (agentskills.io standard)
-examples/       Code samples for all languages
-docs/           Developer documentation (Mintlify)
-specs/          OpenAPI spec + protocol docs
+typescript/             TypeScript SDK + CLI (pnpm monorepo)
+python/                 Python SDK
+rust/                   Rust SDK (name reserved on crates.io)
+skills/                 Agent skills (agentskills.io standard)
+examples/               Code samples for all languages
+integrations/jetbrains/ JetBrains IDE plugin (Kotlin)
+docs/                   Developer documentation (Mintlify)
+specs/                  OpenAPI spec + protocol docs
 ```
 
 ## License
