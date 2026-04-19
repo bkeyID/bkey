@@ -1,20 +1,21 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
-import { requireConfig } from '../lib/config.js';
+import { loadConfig, requireConfig } from '../lib/config.js';
 import { BKey } from '@bkey/sdk';
 
 export const approveCommand = new Command('approve')
   .description('Request biometric approval from a user via CIBA push notification')
   .argument('<message>', 'Binding message shown to the user (e.g. "Deploy to production")')
   .option('--scope <scope>', 'Approval scope', 'approve:action')
-  .option('--user-did <did>', 'User DID to request approval from')
+  .option('--user-did <did>', 'User DID to request approval from (falls back to saved session DID)')
   .option('--amount <cents>', 'Amount in cents (for payment approvals)', parseInt)
   .option('--currency <code>', 'Currency code', 'USD')
   .option('--resource <name>', 'Resource being accessed')
   .option('--recipient <name>', 'Recipient of the action')
   .option('--description <text>', 'Action description')
   .option('--timeout <seconds>', 'Timeout in seconds', parseInt)
+  .option('--agent', 'Force agent mode (use ~/.bkey/agent.json); equivalent to BKEY_MODE=agent')
   .option('--json', 'Output result as JSON')
   .action(async (message: string, opts: {
     scope: string;
@@ -25,9 +26,12 @@ export const approveCommand = new Command('approve')
     recipient?: string;
     description?: string;
     timeout?: number;
+    agent?: boolean;
     json?: boolean;
   }) => {
-    const config = requireConfig();
+    // approve is agent-only — default to agent mode so callers don't have to
+    // remember to pass --agent every time. Humans can still use env overrides.
+    const config = requireConfig({ agent: opts.agent ?? true });
 
     if (!config.clientId || !config.clientSecret) {
       console.error('approve requires agent mode (client_id + client_secret).');
@@ -38,9 +42,16 @@ export const approveCommand = new Command('approve')
     const api = new BKey(config);
     const timeoutMs = (opts.timeout ?? 300) * 1000;
 
-    const userDid = opts.userDid ?? config.did;
+    // Target DID resolution (caller identity is separate — DID here is WHO to ask):
+    //   1. --user-did flag (explicit)
+    //   2. saved human session DID from ~/.bkey/config.json (self-approval for the
+    //      developer who is both agent owner and approval target — common case)
+    //   3. error
+    const savedSessionDid = loadConfig()?.did;
+    const userDid = opts.userDid ?? savedSessionDid;
     if (!userDid) {
-      console.error('No user DID specified. Use --user-did or set a saved DID (from prior auth).');
+      console.error('No user DID specified.');
+      console.error('Pass --user-did <did:bkey:...>, or run `bkey auth login` to save your DID as the default target.');
       process.exit(1);
     }
 

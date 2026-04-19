@@ -1,7 +1,7 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
-import { requireConfig } from '../lib/config.js';
+import { loadConfig, requireConfig } from '../lib/config.js';
 import { BKey, pollCheckoutRequest } from '@bkey/sdk';
 
 export const checkoutCommand = new Command('checkout')
@@ -18,7 +18,8 @@ checkoutCommand
   .option('--item <items...>', 'Line items as "title:qty:price_cents" (e.g., "Black Tee:1:2999")')
   .option('--timeout <seconds>', 'Timeout in seconds (default: 300)', parseInt)
   .option('--purpose <text>', 'Purpose / reason for purchase')
-  .option('--user-did <did>', 'User DID for CIBA approval (agent mode)')
+  .option('--user-did <did>', 'User DID for CIBA approval (agent mode; falls back to saved session DID)')
+  .option('--agent', 'Force agent mode (use ~/.bkey/agent.json); equivalent to BKEY_MODE=agent')
   .action(async (opts: {
     url: string;
     merchant: string;
@@ -29,8 +30,9 @@ checkoutCommand
     timeout?: number;
     purpose?: string;
     userDid?: string;
+    agent?: boolean;
   }) => {
-    const config = requireConfig();
+    const config = requireConfig({ agent: opts.agent });
     const api = new BKey(config);
 
     // parse --item "title:qty:price" into lineItems
@@ -62,8 +64,10 @@ checkoutCommand
     try {
       if (isAgentMode) {
         // ── CIBA flow: agent requests per-action approval ──────────────
-        // 1. Initiate CIBA request for payment approval
-        const userDid = opts.userDid ?? config.did;
+        // Target DID resolution (approval target, not caller identity):
+        //   --user-did flag > saved session DID > error
+        const savedSessionDid = loadConfig()?.did;
+        const userDid = opts.userDid ?? savedSessionDid;
         if (!userDid) {
           console.error('Agent mode requires --user-did or a saved DID (from prior auth).');
           console.error('Specify the user whose approval is needed: --user-did did:bkey:...');
@@ -185,8 +189,9 @@ checkoutCommand
 checkoutCommand
   .command('status <requestId>')
   .description('Check the status of a checkout request')
-  .action(async (requestId: string) => {
-    const config = requireConfig();
+  .option('--agent', 'Force agent mode (use ~/.bkey/agent.json); equivalent to BKEY_MODE=agent')
+  .action(async (requestId: string, opts: { agent?: boolean }) => {
+    const config = requireConfig({ agent: opts.agent });
     const api = new BKey(config);
 
     try {

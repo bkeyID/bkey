@@ -6,6 +6,26 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ---
 
+## `@bkey/cli` 0.3.0 — unreleased
+
+### Breaking
+
+- **Agent mode is now opt-in.** Previously, if `~/.bkey/agent.json` existed on disk it silently won over the user session from `bkey auth login` for every command, so a human's own terminal would quietly run as the agent. Now `config.json` is the default principal; agent mode is selected via `--agent`, `BKEY_MODE=agent`, or `BKEY_CLIENT_ID`+`BKEY_CLIENT_SECRET` env vars. Scripts that relied on `agent.json`'s implicit precedence must set one of those.
+- **`bkey auth logout` no longer wipes `agent.json` by default.** It revokes the user session only. Pass `--agent` to remove agent credentials, or `--all` for the previous behavior.
+
+### Added
+
+- `--agent` flag on `approve`, `checkout request`, `checkout status`, `vault store`, `vault list`, `proxy`, `wrap`, `auth status`, `auth logout`.
+- `BKEY_MODE=agent` environment variable (equivalent to `--agent`).
+- `bkey auth status` now surfaces both principals: running without `--agent` still shows the user session, but appends a note when `agent.json` also exists so the agent is discoverable.
+- `approve` defaults to agent mode (it's agent-only by nature) and falls back from `--user-did` to the saved session DID when present — the plugin / CLI caller no longer has to pass `--user-did` for self-approval.
+
+### Fixed
+
+- `bkey approve` previously required `--user-did` whenever agent mode was active because `requireConfig()` dropped the saved session DID on the floor. The target DID is now resolved at the command-semantic layer: `--user-did > ~/.bkey/config.json did > error`.
+
+---
+
 ## `@bkey/sdk` 0.2.0 — 2026-04-18
 
 ### Added

@@ -52,13 +52,27 @@ export function saveConfig(config: BKeyConfig): void {
   writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
-export function deleteConfig(): void {
+/** Remove the user session config (~/.bkey/config.json). */
+export function deleteUserConfig(): void {
   if (existsSync(CONFIG_FILE)) {
     unlinkSync(CONFIG_FILE);
   }
+}
+
+/** Remove persistent agent credentials (~/.bkey/agent.json). */
+export function deleteAgentConfig(): void {
   if (existsSync(AGENT_CONFIG_FILE)) {
     unlinkSync(AGENT_CONFIG_FILE);
   }
+}
+
+/**
+ * Remove both user session and agent credentials. Kept for backward compat —
+ * prefer `deleteUserConfig()` or `deleteAgentConfig()` directly.
+ */
+export function deleteConfig(): void {
+  deleteUserConfig();
+  deleteAgentConfig();
 }
 
 export function loadAgentConfig(): AgentConfig | null {
@@ -80,16 +94,45 @@ export function resolveApiUrl(): string {
   return (process.env.BKEY_BASE_URL || 'https://api.bkey.id').replace(/\/$/, '');
 }
 
+export interface RequireConfigOptions {
+  /**
+   * Force agent mode (use ~/.bkey/agent.json). Equivalent to BKEY_MODE=agent.
+   * When omitted, defaults to the human user session (~/.bkey/config.json)
+   * unless env-var overrides are present.
+   */
+  agent?: boolean;
+}
+
 /**
- * Resolve auth config with priority:
- *   1. BKEY_ACCESS_TOKEN env var → direct override (highest priority)
- *   2. BKEY_CLIENT_ID + BKEY_CLIENT_SECRET env vars → client_credentials (agent mode)
- *   3. ~/.bkey/agent.json → persistent agent credentials (created by --save)
- *   4. Config file accessToken → use with refresh
- *   5. Error: prompt to run `bkey auth login`
+ * True when the caller is asking for agent mode — either via an explicit flag
+ * or BKEY_MODE=agent in the environment. Keep this in sync with
+ * {@link requireConfig}'s resolution.
  */
-export function requireConfig(): BKeyConfig {
-  // 1. Direct access token override (highest priority — explicit token wins over credentials)
+export function isAgentModeRequested(opts?: RequireConfigOptions): boolean {
+  if (opts?.agent) return true;
+  const mode = process.env.BKEY_MODE?.trim().toLowerCase();
+  return mode === 'agent';
+}
+
+/**
+ * Resolve auth config. Two principals, resolved separately:
+ *
+ *   - Human user (default): config.json from `bkey auth login`.
+ *   - Agent (opt-in via --agent, BKEY_MODE=agent, or BKEY_CLIENT_ID/SECRET env vars):
+ *     agent.json from `bkey auth setup-agent --save`, or env vars.
+ *
+ * Resolution order:
+ *   1. BKEY_ACCESS_TOKEN env (direct override, rarely used)
+ *   2. BKEY_CLIENT_ID + BKEY_CLIENT_SECRET env (implicit agent mode)
+ *   3. If agent mode requested → ~/.bkey/agent.json (else skipped — agent.json
+ *      never silently wins over a logged-in user session)
+ *   4. ~/.bkey/config.json (user session)
+ *   5. Error with a hint appropriate to the mode.
+ */
+export function requireConfig(opts?: RequireConfigOptions): BKeyConfig {
+  const agentRequested = isAgentModeRequested(opts);
+
+  // 1. Direct access token override (highest priority — explicit token wins).
   const envToken = process.env.BKEY_ACCESS_TOKEN;
   if (envToken) {
     return {
@@ -98,7 +141,7 @@ export function requireConfig(): BKeyConfig {
     };
   }
 
-  // 2. Agent mode: OAuth client credentials from env vars
+  // 2. Agent creds from env vars — implicit agent mode regardless of --agent flag.
   const envClientId = process.env.BKEY_CLIENT_ID;
   const envClientSecret = process.env.BKEY_CLIENT_SECRET;
   if (envClientId && envClientSecret) {
@@ -109,17 +152,24 @@ export function requireConfig(): BKeyConfig {
     };
   }
 
-  // 3. Persistent agent credentials from ~/.bkey/agent.json
-  const agentConfig = loadAgentConfig();
-  if (agentConfig?.clientId && agentConfig?.clientSecret) {
-    return {
-      apiUrl: resolveApiUrl(),
-      clientId: agentConfig.clientId,
-      clientSecret: agentConfig.clientSecret,
-    };
+  // 3. Persistent agent creds — only when agent mode was explicitly requested.
+  //    This prevents `agent.json`'s mere existence from hijacking a human's terminal.
+  if (agentRequested) {
+    const agentConfig = loadAgentConfig();
+    if (agentConfig?.clientId && agentConfig?.clientSecret) {
+      return {
+        apiUrl: resolveApiUrl(),
+        clientId: agentConfig.clientId,
+        clientSecret: agentConfig.clientSecret,
+      };
+    }
+    console.error('Agent mode requested but no agent credentials are available.');
+    console.error('Either set BKEY_CLIENT_ID + BKEY_CLIENT_SECRET env vars,');
+    console.error('or run: bkey auth setup-agent --save');
+    process.exit(1);
   }
 
-  // 4. Config file with OAuth tokens (user mode — set clientId for SDK refresh)
+  // 4. Human user session (default).
   const config = loadConfig();
   if (config?.accessToken) {
     config.clientId ??= CLI_CLIENT_ID;
@@ -127,6 +177,6 @@ export function requireConfig(): BKeyConfig {
   }
 
   console.error('Not logged in. Run: bkey auth login');
-  console.error('Or set BKEY_CLIENT_ID + BKEY_CLIENT_SECRET environment variables (agent mode).');
+  console.error('Or, to run as an agent, set BKEY_MODE=agent (with agent.json saved) or BKEY_CLIENT_ID + BKEY_CLIENT_SECRET.');
   process.exit(1);
 }

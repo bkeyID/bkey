@@ -1,7 +1,7 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
-import { saveConfig, loadConfig, deleteConfig, requireConfig, resolveApiUrl } from '../lib/config.js';
+import { saveConfig, loadConfig, deleteUserConfig, deleteAgentConfig, resolveApiUrl } from '../lib/config.js';
 import { CLI_CLIENT_ID } from '../lib/constants.js';
 import { pollDeviceAuth } from '../lib/device-auth-poll.js';
 
@@ -307,72 +307,83 @@ authCommand
 authCommand
   .command('status')
   .description('Show current authentication status')
-  .action(async () => {
-    let source = 'none';
-    let method = '';
+  .option('--agent', 'Show agent-mode status (use ~/.bkey/agent.json) instead of the user session')
+  .action(async (opts: { agent?: boolean }) => {
+    const { loadAgentConfig, isAgentModeRequested } = await import('../lib/config.js');
+    const agentModeRequested = isAgentModeRequested(opts);
 
-    // Check agent mode env vars
+    // Direct access token env var (highest precedence).
+    const envToken = process.env.BKEY_ACCESS_TOKEN;
+    if (envToken) {
+      console.log(`API URL:  ${resolveApiUrl()}`);
+      console.log(`Token:    ${envToken.slice(0, 8)}...`);
+      console.log(`Source:   environment (access token)`);
+      console.log(`Method:   bearer`);
+      return;
+    }
+
+    // Env-var agent mode (implicit, regardless of --agent).
     const envClientId = process.env.BKEY_CLIENT_ID;
     const envClientSecret = process.env.BKEY_CLIENT_SECRET;
     if (envClientId && envClientSecret) {
-      source = 'environment (agent mode)';
-      method = 'client_credentials';
       console.log(`API URL:  ${resolveApiUrl()}`);
       console.log(`Client:   ${envClientId}`);
-      console.log(`Source:   ${source}`);
-      console.log(`Method:   ${method}`);
+      console.log(`Source:   environment (agent mode via env vars)`);
+      console.log(`Method:   client_credentials`);
       return;
     }
 
-    // Check direct token env var
-    const envToken = process.env.BKEY_ACCESS_TOKEN;
-    if (envToken) {
-      source = 'environment (access token)';
-      method = 'bearer';
-      console.log(`API URL:  ${resolveApiUrl()}`);
-      console.log(`Token:    ${envToken.slice(0, 8)}...`);
-      console.log(`Source:   ${source}`);
-      return;
-    }
-
-    // Check persistent agent credentials (~/.bkey/agent.json)
-    const { loadAgentConfig } = await import('../lib/config.js');
     const agentConfig = loadAgentConfig();
-    if (agentConfig?.clientId && agentConfig?.clientSecret) {
-      source = 'agent.json (persistent agent mode)';
-      method = 'client_credentials';
+    const sessionConfig = loadConfig();
+
+    // Agent mode explicitly requested: report agent.json (or the lack of it).
+    if (agentModeRequested) {
+      if (!agentConfig?.clientId || !agentConfig?.clientSecret) {
+        console.log('Status:   Not authenticated (agent mode requested but no agent.json)');
+        console.log('Run:      bkey auth setup-agent --save');
+        return;
+      }
       console.log(`API URL:  ${resolveApiUrl()}`);
       console.log(`Client:   ${agentConfig.clientId}`);
       console.log(`Name:     ${agentConfig.name}`);
-      console.log(`Source:   ${source}`);
-      console.log(`Method:   ${method}`);
+      console.log(`Source:   agent.json`);
+      console.log(`Method:   client_credentials`);
       console.log(`Created:  ${agentConfig.createdAt}`);
+      if (sessionConfig?.did) {
+        console.log(`Target DID (fallback): ${sessionConfig.did}`);
+      }
       return;
     }
 
-    // Check config file
-    const config = loadConfig();
-    if (!config?.accessToken) {
+    // Default: user session status.
+    if (!sessionConfig?.accessToken) {
       console.log('Status:   Not authenticated');
       console.log('Run:      bkey auth login');
+      if (agentConfig?.clientId) {
+        console.log('');
+        console.log(`Agent credentials exist at ~/.bkey/agent.json (${agentConfig.name}).`);
+        console.log('Run `bkey auth status --agent` or pass --agent to use them.');
+      }
       return;
     }
 
-    source = 'config file';
-    method = 'device authorization';
-
+    const config = sessionConfig;
     const isExpired = config.tokenExpiresAt
       ? new Date(config.tokenExpiresAt) < new Date()
       : false;
 
     console.log(`API URL:  ${config.apiUrl}`);
     if (config.did) console.log(`DID:      ${config.did}`);
-    console.log(`Method:   ${method}`);
-    console.log(`Source:   ${source}`);
+    console.log(`Method:   device authorization`);
+    console.log(`Source:   config.json (user session)`);
     console.log(`Expires:  ${config.tokenExpiresAt ?? 'unknown'}`);
 
     if (isExpired) {
       console.log('Status:   Expired (will auto-refresh on next command)');
+      if (agentConfig?.clientId) {
+        console.log('');
+        console.log(`Agent credentials also available: ${agentConfig.name} (pass --agent).`);
+      }
       return;
     }
 
@@ -397,29 +408,54 @@ authCommand
     }
 
     console.log(`Status:   ${liveStatus}`);
+
+    // Surface agent credentials if they exist too, so the user isn't surprised
+    // later when `--agent` / the JetBrains plugin switches principal.
+    if (agentConfig?.clientId) {
+      console.log('');
+      console.log(`Agent credentials also available: ${agentConfig.name} (pass --agent to use).`);
+    }
   });
 
 // ─── bkey auth logout ──────────────────────────────────────────────
 
 authCommand
   .command('logout')
-  .description('Revoke tokens and clear stored credentials')
-  .action(async () => {
-    const config = loadConfig();
-    if (config?.refreshToken && config.apiUrl) {
-      // Revoke the refresh token on the server
-      try {
-        await fetch(`${config.apiUrl.replace(/\/$/, '')}/oauth/revoke`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ token: config.refreshToken, client_id: CLI_CLIENT_ID }),
-          signal: AbortSignal.timeout(5_000),
-        });
-      } catch {
-        // Non-critical — server-side token will expire naturally
+  .description('Revoke the user session and remove stored credentials')
+  .option('--agent', 'Remove agent credentials (~/.bkey/agent.json) instead of the user session')
+  .option('--all', 'Remove both the user session and agent credentials')
+  .action(async (opts: { agent?: boolean; all?: boolean }) => {
+    const removeUser = opts.all || !opts.agent;
+    const removeAgent = opts.all || opts.agent;
+
+    if (removeUser) {
+      const config = loadConfig();
+      if (config?.refreshToken && config.apiUrl) {
+        // Revoke the user's refresh token server-side. Non-critical on failure
+        // — the token will expire naturally.
+        try {
+          await fetch(`${config.apiUrl.replace(/\/$/, '')}/oauth/revoke`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ token: config.refreshToken, client_id: CLI_CLIENT_ID }),
+            signal: AbortSignal.timeout(5_000),
+          });
+        } catch {
+          // Non-critical — server-side token will expire naturally
+        }
       }
+      deleteUserConfig();
     }
 
-    deleteConfig();
-    console.log('Logged out. Tokens revoked.');
+    if (removeAgent) {
+      deleteAgentConfig();
+    }
+
+    if (removeUser && removeAgent) {
+      console.log('Logged out. User session revoked; agent credentials removed.');
+    } else if (removeAgent) {
+      console.log('Agent credentials removed.');
+    } else {
+      console.log('Logged out. User session revoked.');
+    }
   });

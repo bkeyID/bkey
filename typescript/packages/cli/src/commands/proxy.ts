@@ -158,13 +158,15 @@ export const proxyCommand = new Command('proxy')
   .option('--data <body>', 'Request body (JSON string)')
   .option('--purpose <purpose>', 'Purpose description for approval notification', 'CLI proxy request')
   .option('--timeout <seconds>', 'Approval timeout in seconds', '120')
+  .option('--agent', 'Force agent mode (use ~/.bkey/agent.json)')
   .action(async (method: string, url: string, opts: {
     header?: string[];
     data?: string;
     purpose: string;
     timeout: string;
+    agent?: boolean;
   }) => {
-    const config = requireConfig();
+    const config = requireConfig({ agent: opts.agent });
     const api = new BKey(config);
     const headers = opts.header ?? [];
 
