@@ -1,8 +1,7 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
-import { loadActiveHumanProfile, requireConfig } from '../lib/config.js';
-import { BKey } from '@bkey/sdk';
+import { createClient, loadActiveHumanProfile, requireConfig } from '../lib/config.js';
 
 export const approveCommand = new Command('approve')
   .description('Request biometric approval from a user via CIBA push notification')
@@ -30,7 +29,8 @@ export const approveCommand = new Command('approve')
     json?: boolean;
   }) => {
     // approve is agent-only by nature — force the principal.
-    const config = requireConfig({ principal: 'agent', profile: opts.profile });
+    const clientOpts = { principal: 'agent' as const, profile: opts.profile };
+    const config = requireConfig(clientOpts);
 
     if (!config.clientId || !config.clientSecret) {
       console.error('approve requires agent mode (client_id + client_secret).');
@@ -38,7 +38,7 @@ export const approveCommand = new Command('approve')
       process.exit(1);
     }
 
-    const api = new BKey(config);
+    const api = createClient(clientOpts);
     const timeoutMs = (opts.timeout ?? 300) * 1000;
 
     // Target DID (who to ask) resolution: --user-did flag > active human profile DID > error.
