@@ -1,5 +1,6 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
+import { BKey } from '@bkey/sdk';
 import { CLI_CLIENT_ID } from './constants.js';
 import {
   getDefaultProfileName,
@@ -180,6 +181,65 @@ function printMissingProfileError(principal: Principal, name: string): void {
         : 'Run `bkey auth setup-agent --save --profile <name>` to create one.',
     );
   }
+}
+
+// ─── authenticated client factory ──────────────────────────────────
+
+/**
+ * Construct a BKey SDK client for the resolved principal+profile. When the
+ * principal resolves to a disk-backed human profile, wire the SDK's
+ * onTokenRefresh + reloadConfig hooks so refreshed access/refresh tokens are
+ * persisted back to the profile store. Without this, the SDK refreshes
+ * tokens in-memory only, the new refresh token never reaches disk, and the
+ * next invocation burns the old refresh token with "refresh token already
+ * used". Direct env-var callers (`BKEY_ACCESS_TOKEN`, `BKEY_CLIENT_ID`) own
+ * their own credential lifecycle; agent profiles use client_credentials
+ * which doesn't involve refresh tokens. Only the human-profile path needs
+ * this plumbing.
+ */
+export function createClient(opts?: RequireConfigOptions): BKey {
+  const config = requireConfig(opts);
+  const api = new BKey(config);
+
+  if (process.env.BKEY_ACCESS_TOKEN) return api;
+  if (process.env.BKEY_CLIENT_ID && process.env.BKEY_CLIENT_SECRET) return api;
+  if (resolvePrincipal(opts) !== 'human') return api;
+
+  const humanProfileName = resolveProfileName('human', opts);
+  if (!humanProfileName) return api;
+  wireHumanProfilePersistence(api, humanProfileName);
+  return api;
+}
+
+/**
+ * Wire the SDK's token-refresh hooks to persist rotated tokens back to the
+ * named human profile. Exported for the `auth setup-agent` path, which
+ * constructs its own BKey instance directly rather than going through
+ * `createClient`.
+ */
+export function wireHumanProfilePersistence(api: BKey, humanProfileName: string): void {
+  const preservedDid = (getProfile('human', humanProfileName) as HumanProfile | null)?.did;
+  api.onTokenRefresh = (updated) => {
+    if (!updated.accessToken) return;
+    saveHumanProfileToStore(humanProfileName, {
+      apiUrl: updated.apiUrl,
+      accessToken: updated.accessToken,
+      refreshToken: updated.refreshToken,
+      tokenExpiresAt: updated.tokenExpiresAt,
+      did: preservedDid,
+    });
+  };
+  api.reloadConfig = () => {
+    const fresh = getProfile('human', humanProfileName) as HumanProfile | null;
+    if (!fresh) return null;
+    return {
+      apiUrl: fresh.apiUrl,
+      accessToken: fresh.accessToken,
+      refreshToken: fresh.refreshToken,
+      tokenExpiresAt: fresh.tokenExpiresAt,
+      clientId: CLI_CLIENT_ID,
+    };
+  };
 }
 
 // ─── human profile (session) helpers ────────────────────────────────

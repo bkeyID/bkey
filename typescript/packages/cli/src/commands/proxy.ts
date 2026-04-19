@@ -3,9 +3,9 @@
 import { Command } from 'commander';
 import { createDecipheriv, createHash } from 'node:crypto';
 import { x25519 } from '@noble/curves/ed25519';
-import { requireConfig } from '../lib/config.js';
+import { createClient } from '../lib/config.js';
 import type { X402AuthorizeResponse, MppAuthorizeResponse } from '@bkey/sdk';
-import { BKey, pollAccessRequest } from '@bkey/sdk';
+import { pollAccessRequest } from '@bkey/sdk';
 
 /**
  * Stream a paid-retry response to stdout and propagate its exit status.
@@ -170,8 +170,7 @@ export const proxyCommand = new Command('proxy')
     human?: boolean;
     profile?: string;
   }) => {
-    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
-    const api = new BKey(config);
+    const api = createClient({ agent: opts.agent, human: opts.human, profile: opts.profile });
     const headers = opts.header ?? [];
 
     // 1. Parse {vault:xxx} placeholders from headers. With no placeholders we

@@ -14,6 +14,7 @@ import {
   resolveProfileName,
   slugifyProfileName,
   removeLegacyFiles,
+  wireHumanProfilePersistence,
 } from '../lib/config.js';
 import { getProfile } from '../lib/profiles.js';
 import { CLI_CLIENT_ID } from '../lib/constants.js';
@@ -150,7 +151,11 @@ authCommand
     '--profile <name>',
     'Profile identifier to save as (default: slug of --name, or "default")',
   )
-  .option('--scopes <scopes>', 'Comma-separated scopes', 'vault:access,vault:store,signing:create,signing:read,identity:read,approve:action,approve:payment,payment:authorize,payment:address,payment:limits')
+  .option(
+    '--scopes <scopes>',
+    'Comma-separated scopes (must be a subset of your own grants). Default is minimal — add `vault:*`, `signing:*`, `payment:*` explicitly if the agent needs them.',
+    'approve:action',
+  )
   .option('--json', 'Output credentials as JSON (for scripting)')
   .option('--save', 'Save credentials to ~/.bkey/profiles.json for persistent agent mode')
   .option('--overwrite', 'Overwrite an existing agent profile with the same name')
@@ -182,6 +187,7 @@ authCommand
     }
 
     const apiUrl = (opts.baseUrl ?? humanProfile.apiUrl).replace(/\/$/, '');
+    const humanProfileName = getDefaultProfileName('human')!; // asserted above
 
     const { BKey } = await import('@bkey/sdk');
     const api = new BKey({
@@ -191,6 +197,9 @@ authCommand
       tokenExpiresAt: humanProfile.tokenExpiresAt,
       clientId: CLI_CLIENT_ID,
     });
+    // Persist rotated tokens back to disk so a retried setup-agent invocation
+    // doesn't fail with "refresh token already used".
+    wireHumanProfilePersistence(api, humanProfileName);
     const token = await api.getValidToken();
 
     const scopes = opts.scopes.split(',').map((s) => s.trim());

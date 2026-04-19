@@ -28,10 +28,13 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 - `bkey approve` previously errored with "No user DID specified" whenever agent mode was active because `requireConfig()` dropped the saved session DID. The target DID is now resolved independently from caller identity.
 - `bkey auth status` wasn't aware of competing principals; `status` and `status --agent` now show the appropriate profile view and surface the other principal's presence as a hint.
+- **Refreshed access/refresh tokens are now persisted back to `profiles.json`.** Previously the SDK refreshed tokens in-memory only, so any human-mode CLI invocation that triggered a refresh would burn the refresh token — the next invocation failed with "refresh token already used". A new `createClient()` helper wires the SDK's `onTokenRefresh` + `reloadConfig` hooks automatically for every command that uses a human-profile principal. (Latent in 0.2.x; would have shipped as a regression at 0.3.0.)
+- **`setup-agent` default `--scopes` trimmed** from a laundry list that included `payment:*`, `vault:*`, `signing:*` down to just `approve:action` — the minimum needed for the common case (CIBA approval agent) and a strict subset of what any user session grants. Users that need broader agents should pass `--scopes` explicitly. Previous default broke on any session whose grant didn't include all listed scopes (error: *"cannot grant scopes beyond your own"*).
 
 ### Internal
 
 - Consolidated principal/profile resolution into `requireConfig({ principal, profile, agent, human })` with a single precedence chain.
+- Added `createClient(opts)` / `wireHumanProfilePersistence(api, name)` in `src/lib/config.ts`; every command that builds an SDK client goes through them.
 - Extracted the legacy `config.json` / `agent.json` read paths into a one-shot migration shim.
 - New `src/lib/profiles.ts` owns all on-disk state; `config.ts` is now thin.
 

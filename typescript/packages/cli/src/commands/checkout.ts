@@ -1,8 +1,8 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
-import { loadActiveHumanProfile, requireConfig } from '../lib/config.js';
-import { BKey, pollCheckoutRequest } from '@bkey/sdk';
+import { createClient, loadActiveHumanProfile, requireConfig } from '../lib/config.js';
+import { pollCheckoutRequest } from '@bkey/sdk';
 
 export const checkoutCommand = new Command('checkout')
   .description('Agentic checkout — purchase items with biometric approval');
@@ -36,8 +36,9 @@ checkoutCommand
     human?: boolean;
     profile?: string;
   }) => {
-    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
-    const api = new BKey(config);
+    const clientOpts = { agent: opts.agent, human: opts.human, profile: opts.profile };
+    const config = requireConfig(clientOpts);
+    const api = createClient(clientOpts);
 
     // parse --item "title:qty:price" into lineItems
     const lineItems: Array<{ title: string; quantity: number; price: number }> = [];
@@ -195,8 +196,7 @@ checkoutCommand
   .option('--human', 'Force human mode (default)')
   .option('--profile <name>', 'Profile to use within the selected principal')
   .action(async (requestId: string, opts: { agent?: boolean; human?: boolean; profile?: string }) => {
-    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
-    const api = new BKey(config);
+    const api = createClient({ agent: opts.agent, human: opts.human, profile: opts.profile });
 
     try {
       const res = (await api.getCheckoutRequestStatus(requestId)) as {

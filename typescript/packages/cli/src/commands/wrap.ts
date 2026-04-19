@@ -4,8 +4,8 @@ import { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import { createDecipheriv, createHash } from 'node:crypto';
 import { x25519 } from '@noble/curves/ed25519';
-import { requireConfig } from '../lib/config.js';
-import { BKey, pollAccessRequest } from '@bkey/sdk';
+import { createClient } from '../lib/config.js';
+import { pollAccessRequest } from '@bkey/sdk';
 
 const VAULT_PLACEHOLDER = /\{vault:([a-zA-Z0-9_ -]+?)(?::([a-zA-Z0-9_-]+))?\}/g;
 
@@ -41,8 +41,7 @@ export const wrapCommand = new Command('wrap')
     human?: boolean;
     profile?: string;
   }) => {
-    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
-    const api = new BKey(config);
+    const api = createClient({ agent: opts.agent, human: opts.human, profile: opts.profile });
     const envDefs = opts.env ?? [];
     const parsedTimeout = parseInt(opts.timeout, 10);
     if (isNaN(parsedTimeout) || parsedTimeout <= 0) {

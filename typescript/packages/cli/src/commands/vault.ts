@@ -3,8 +3,8 @@
 import { Command } from 'commander';
 import { randomBytes, createCipheriv, createHash } from 'node:crypto';
 import { x25519 } from '@noble/curves/ed25519';
-import { requireConfig } from '../lib/config.js';
-import { BKey, pollStoreRequest } from '@bkey/sdk';
+import { createClient } from '../lib/config.js';
+import { pollStoreRequest } from '@bkey/sdk';
 
 export const vaultCommand = new Command('vault')
   .description('Manage vault items stored on your phone');
@@ -30,8 +30,7 @@ vaultCommand
     human?: boolean;
     profile?: string;
   }) => {
-    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
-    const api = new BKey(config);
+    const api = createClient({ agent: opts.agent, human: opts.human, profile: opts.profile });
 
     // parse --field key=value pairs into a JSON object
     const fields: Record<string, string> = {};
@@ -123,8 +122,7 @@ vaultCommand
   .option('--human', 'Force human mode (default)')
   .option('--profile <name>', 'Profile to use within the selected principal')
   .action(async (opts: { type?: string; agent?: boolean; human?: boolean; profile?: string }) => {
-    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
-    const api = new BKey(config);
+    const api = createClient({ agent: opts.agent, human: opts.human, profile: opts.profile });
 
     try {
       const res = (await api.listVaultItems(opts.type)) as {
