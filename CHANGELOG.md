@@ -6,6 +6,37 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ---
 
+## `@bkey/cli` 0.3.0 — unreleased
+
+### Breaking
+
+- **Named profiles replace the `config.json` + `agent.json` duo.** All auth state now lives in a single `~/.bkey/profiles.json` (humans keyed by name, agents keyed by name, defaults pointer). On first 0.3.0 invocation the CLI auto-migrates any pre-existing `~/.bkey/config.json` / `~/.bkey/agent.json` into profiles named `default` and writes a one-time stderr notice. The legacy files are left on disk as a rollback aid for one release and removed in 0.4.0.
+- **Agent-mode precedence flipped.** `agent.json` (now the `agents.default` profile) no longer silently wins over a logged-in user session. Selection is now explicit: `--agent`, `BKEY_MODE=agent`, `BKEY_CLIENT_ID`+`BKEY_CLIENT_SECRET`, or `--profile <name>`. Scripts that relied on the old implicit precedence must set one of those.
+- **`bkey auth logout` no longer wipes agent credentials by default.** Removes only the active human profile. Pass `--agent`, `--profile <name>`, or `--all` for broader scope.
+
+### Added
+
+- **Multi-profile support.** Store multiple humans and multiple agents side-by-side (e.g. `ide-agent`, `ci-agent`, `claude-code-agent`) with per-principal defaults.
+- **Top-level `bkey profiles` command** — `list`/`ls`, `current`, `use <name>`, `rename`, `delete`/`rm`. `bkey profiles` with no args lists everything.
+- **Profile selection flags** on every dual-mode command (`vault`, `proxy`, `wrap`, `checkout`): `--profile <name>`, `--agent`, `--human`. `BKEY_PROFILE` env var for shell workflows.
+- **`bkey auth login --profile <name>`** creates a named human profile (default: `default`).
+- **`bkey auth setup-agent --save --profile <name>`** saves an agent with an explicit identifier. If `--profile` is omitted, the identifier is slugified from `--name` (e.g. `--name "Deploy Bot"` → `deploy-bot`). Collisions error unless `--overwrite` is passed — avoids a silent-overwrite footgun on the second agent.
+- **Approval-target DID resolution at the command layer.** `approve` / `checkout request` now resolve the target DID as `--user-did > active human profile DID > error`, so `bkey approve "msg"` under agent mode Just Works once you're logged in as a human.
+- **Atomic writes.** The profile store is written via tmp-file + `fsync` + rename + directory `fsync`, with a `profiles.json.bak` rolled on every save so a single bad write cannot wipe every profile.
+
+### Fixed
+
+- `bkey approve` previously errored with "No user DID specified" whenever agent mode was active because `requireConfig()` dropped the saved session DID. The target DID is now resolved independently from caller identity.
+- `bkey auth status` wasn't aware of competing principals; `status` and `status --agent` now show the appropriate profile view and surface the other principal's presence as a hint.
+
+### Internal
+
+- Consolidated principal/profile resolution into `requireConfig({ principal, profile, agent, human })` with a single precedence chain.
+- Extracted the legacy `config.json` / `agent.json` read paths into a one-shot migration shim.
+- New `src/lib/profiles.ts` owns all on-disk state; `config.ts` is now thin.
+
+---
+
 ## `@bkey/sdk` 0.2.0 — 2026-04-18
 
 ### Added

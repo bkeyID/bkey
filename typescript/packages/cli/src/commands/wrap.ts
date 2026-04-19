@@ -29,13 +29,19 @@ export const wrapCommand = new Command('wrap')
   .option('--env <envs...>', 'Environment variables with vault refs: VAR={vault:name}')
   .option('--purpose <purpose>', 'Purpose for approval notification', 'CLI wrap command')
   .option('--timeout <seconds>', 'Approval timeout in seconds', '120')
+  .option('--agent', 'Force agent mode')
+  .option('--human', 'Force human mode (default)')
+  .option('--profile <name>', 'Profile to use within the selected principal')
   .argument('<command...>', 'Command to run (use -- before it)')
   .action(async (command: string[], opts: {
     env?: string[];
     purpose: string;
     timeout: string;
+    agent?: boolean;
+    human?: boolean;
+    profile?: string;
   }) => {
-    const config = requireConfig();
+    const config = requireConfig({ agent: opts.agent, human: opts.human, profile: opts.profile });
     const api = new BKey(config);
     const envDefs = opts.env ?? [];
     const parsedTimeout = parseInt(opts.timeout, 10);
