@@ -31,6 +31,15 @@ class BKeySettings : PersistentStateComponent<BKeySettings> {
      */
     var agentProfile: String = ""
 
+    /**
+     * When true, the plugin writes a `.git/hooks/commit-msg` script into every
+     * git project it opens. That catches AI-agent commits issued through a
+     * terminal subprocess (which bypass IntelliJ's VCS CheckinHandler), not
+     * just commits going through the Commit dialog. Off by default because
+     * it modifies files in the user's repo — opt-in per user.
+     */
+    var autoInstallGitHook: Boolean = false
+
     override fun getState(): BKeySettings = this
 
     override fun loadState(state: BKeySettings) {

@@ -101,6 +101,19 @@ Or run a sandbox IDE with the plugin pre-loaded:
 | Timeout (seconds) | `120` | Max wait for phone approval |
 | User DID | *(empty)* | Override `--user-did`; empty = CLI falls back to the logged-in session's DID |
 | Include diff summary | `true` | Append file list to the binding message |
+| Auto-install commit-msg hook | `false` | Writes `.git/hooks/commit-msg` to every opened git project (see below). |
+
+### Catching agent commits from the terminal
+
+The plugin's `CheckinHandler` only fires for commits that go through IntelliJ's VCS API — the Commit dialog, `⌘K`, the sidebar Commit button. AI coding agents (Junie, Codex, Claude Code) often commit by **shelling out to `git commit` in a terminal they spawn themselves**, which bypasses that pipeline. Those commits appear on your branch with no BKey approval.
+
+The fix is a `commit-msg` git hook — git invokes it for every commit regardless of origin. Enable it under **Settings → Tools → BKey Approval**:
+
+- **Install in current project** button — drops `.git/hooks/commit-msg` into the repo you have open, gating every subsequent commit on `bkey approve`.
+- **Auto-install commit-msg hook** checkbox — when on, the plugin does the install automatically on every project open. Default off (plugin modifies files in your repo, so opt in explicitly).
+- **Remove from current project** button — cleans up. The plugin refuses to touch non-BKey hooks; if you already had a `commit-msg` hook, we leave it alone and log a skip.
+
+The installed hook is a 30-line bash script that shells out to `bkey approve --json` with the commit message as the binding message. It's self-contained — `git commit` from the terminal, from Codex's subshell, from the IDE all hit the same gate.
 
 ### Multiple agents
 

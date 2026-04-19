@@ -37,5 +37,8 @@
             displayType="BALLOON"
             bundle="messages.BKeyBundle"
             key="notification.group.bkey"/>
+
+        <postStartupActivity
+            implementation="id.bkey.jetbrains.BKeyProjectStartup"/>
     </extensions>
 </idea-plugin>
