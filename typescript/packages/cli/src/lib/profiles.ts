@@ -169,12 +169,15 @@ function readStoreFile(path: string): ProfilesStore | null {
 }
 
 /**
- * Lazily migrate `~/.bkey/config.json` and `~/.bkey/agent.json` (0.3.0 and
- * earlier) into the new store on first access. Writes a one-time stderr
- * notice so the schema change isn't completely silent.
+ * Lazily migrate `~/.bkey/config.json` and `~/.bkey/agent.json` (0.2.x) into
+ * the new store on first access. Writes a one-time stderr notice so the
+ * schema change isn't completely silent.
  *
  * Legacy files are left in place as read-only fallbacks for one release so
- * users can roll back by downgrading; a follow-up release deletes them.
+ * users can roll back by downgrading.
+ *
+ * TODO(0.4.0): delete this function, the LEGACY_* constants, and
+ * `removeLegacyFiles()`. Tracking issue: bkeyID/bkey#27.
  */
 function migrateLegacy(): ProfilesStore | null {
   const hasLegacy = existsSync(LEGACY_CONFIG_FILE) || existsSync(LEGACY_AGENT_FILE);

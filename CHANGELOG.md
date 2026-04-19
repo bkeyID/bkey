@@ -10,7 +10,7 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ### Breaking
 
-- **Named profiles replace the `config.json` + `agent.json` duo.** All auth state now lives in a single `~/.bkey/profiles.json` (humans keyed by name, agents keyed by name, defaults pointer). On first 0.3.0 invocation the CLI auto-migrates any pre-existing `~/.bkey/config.json` / `~/.bkey/agent.json` into profiles named `default` and writes a one-time stderr notice. The legacy files are left on disk as a rollback aid for one release and removed in 0.4.0.
+- **Named profiles replace the `config.json` + `agent.json` duo.** All auth state now lives in a single `~/.bkey/profiles.json` (humans keyed by name, agents keyed by name, defaults pointer). On first 0.3.0 invocation the CLI auto-migrates any pre-existing `~/.bkey/config.json` / `~/.bkey/agent.json` into profiles named `default` and writes a one-time stderr notice. The legacy files are left on disk as a rollback aid for one release; the migration shim is removed in 0.4.0 (tracked in [#27](https://github.com/bkeyID/bkey/issues/27)).
 - **Agent-mode precedence flipped.** `agent.json` (now the `agents.default` profile) no longer silently wins over a logged-in user session. Selection is now explicit: `--agent`, `BKEY_MODE=agent`, `BKEY_CLIENT_ID`+`BKEY_CLIENT_SECRET`, or `--profile <name>`. Scripts that relied on the old implicit precedence must set one of those.
 - **`bkey auth logout` no longer wipes agent credentials by default.** Removes only the active human profile. Pass `--agent`, `--profile <name>`, or `--all` for broader scope.
 
