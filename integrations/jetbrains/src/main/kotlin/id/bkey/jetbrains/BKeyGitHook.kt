@@ -187,11 +187,14 @@ object BKeyGitHook {
             appendLine("  exit 0")
             appendLine("fi")
             appendLine()
-            appendLine("PROFILE_ARGS=()")
-            appendLine("[ -n \"\${BKEY_PROFILE:-}\" ] && PROFILE_ARGS+=(--profile \"\$BKEY_PROFILE\")")
-            appendLine()
             appendLine("echo \"bkey hook: requesting approval for \\\"\$COMMIT_MSG\\\"…\" >&2")
-            appendLine("RESULT=\$(\"\$BKEY_BIN\" approve \"\$COMMIT_MSG\" --scope \"\$BKEY_SCOPE\" \"\${PROFILE_ARGS[@]}\" --json 2>&1 || true)")
+            // Don't expand an empty bash array under `set -u` — it errors with
+            // "PROFILE_ARGS[@]: unbound variable" on older Bash. Just branch.
+            appendLine("if [ -n \"\${BKEY_PROFILE:-}\" ]; then")
+            appendLine("  RESULT=\$(\"\$BKEY_BIN\" approve \"\$COMMIT_MSG\" --scope \"\$BKEY_SCOPE\" --profile \"\$BKEY_PROFILE\" --json 2>&1 || true)")
+            appendLine("else")
+            appendLine("  RESULT=\$(\"\$BKEY_BIN\" approve \"\$COMMIT_MSG\" --scope \"\$BKEY_SCOPE\" --json 2>&1 || true)")
+            appendLine("fi")
             appendLine()
             appendLine("if echo \"\$RESULT\" | grep -qE '\"approved\"[[:space:]]*:[[:space:]]*true'; then")
             appendLine("  echo \"bkey hook: approved.\" >&2")
