@@ -42,16 +42,20 @@ in the CLI's existing device-auth session — no separate login inside the IDE.
 
 ## Prerequisites
 
-1. BKey CLI installed and authenticated:
+1. BKey CLI **≥ 0.3.0**, authenticated as both human and agent:
 
    ```bash
    npm install -g @bkey/cli
-   bkey auth setup-agent --save   # agent mode (client_id + client_secret)
-   # or
-   bkey auth login                # human device-auth flow
+   bkey auth login                  # 1. human session — provides the user DID
+   bkey auth setup-agent --save     # 2. agent OAuth client — signs CIBA requests
    ```
 
-   Verify with `bkey approve "test approval" --json`.
+   Both coexist (`~/.bkey/config.json` + `~/.bkey/agent.json`). The plugin sets
+   `BKEY_MODE=agent` when shelling out, so it always runs as the agent without
+   clobbering your terminal's human session.
+
+   Verify: `bkey auth status` (human) and `bkey auth status --agent` (agent)
+   both show credentials.
 
 2. A JetBrains IDE on build **243** (2024.3) or newer.
 
@@ -94,7 +98,7 @@ Or run a sandbox IDE with the plugin pre-loaded:
 | bkey CLI path | `bkey` | Full path if not on PATH (e.g. `/usr/local/bin/bkey`) |
 | Approval scope | `approve:git.commit` | CIBA scope passed to `--scope` |
 | Timeout (seconds) | `120` | Max wait for phone approval |
-| User DID | *(empty)* | Override `--user-did`; empty = use CLI default |
+| User DID | *(empty)* | Override `--user-did`; empty = CLI falls back to the logged-in session's DID |
 | Include diff summary | `true` | Append file list to the binding message |
 
 ## Use

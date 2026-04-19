@@ -30,6 +30,12 @@ object BKeyCliRunner {
             if (settings.userDid.isNotBlank()) {
                 addParameters("--user-did", settings.userDid)
             }
+            // Always run the CLI in agent mode. Works against CLIs ≥ 0.3.0
+            // (which honor BKEY_MODE=agent explicitly) and ≤ 0.2.x (which
+            // silently prefer agent.json anyway — harmless no-op env var).
+            // We avoid `--agent` on the command line so we don't break older
+            // CLIs with an unknown flag.
+            environment["BKEY_MODE"] = "agent"
             if (workingDirectory != null) {
                 setWorkDirectory(workingDirectory)
             }
