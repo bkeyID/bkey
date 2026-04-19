@@ -57,13 +57,19 @@ In headless environments (Docker, SSH, OpenClaw), the terminal QR code is the pr
 
 ### Agent mode (CI/CD, Claude Code skill)
 
-**Option 1 — Persistent agent credentials (recommended for Claude Code / Anthropic Claude):**
+**Option 1 — Persistent agent profile (recommended for Claude Code / Anthropic Claude):**
 
 ```bash
 bkey auth setup-agent --name "Claude Code Agent" --save
 ```
 
-This creates an OAuth client and saves credentials to `~/.bkey/agent.json`. All subsequent `bkey` commands automatically use the agent identity — CIBA approval prompts fire on the user's phone for each action.
+This creates an OAuth client and saves it as an agent profile in `~/.bkey/profiles.json` (the identifier is slugified from `--name`, e.g. `claude-code-agent`). The default scope is `approve:action`; add more via `--scopes` if the agent needs broader capabilities. Since 0.3.0 agent mode is **opt-in** — agent profiles no longer silently win over a logged-in user session. Select agent mode explicitly when invoking:
+
+```bash
+bkey <cmd> --agent                           # uses the default agent profile
+bkey <cmd> --agent --profile claude-code-agent
+BKEY_MODE=agent bkey <cmd>                    # env-var equivalent
+```
 
 **Option 2 — Environment variables (CI/CD, Docker, OpenClaw):**
 
@@ -72,21 +78,19 @@ export BKEY_CLIENT_ID=bkey_client_xxx
 export BKEY_CLIENT_SECRET=bkey_secret_xxx
 ```
 
-Create credentials: `bkey auth setup-agent --name "My Agent" --scopes approve:payment,approve:action,vault:access,identity:read`
-
-For scripting/automation, use `--json` to get machine-parseable output:
+Env vars imply agent mode automatically (no `--agent` flag needed). Create credentials without saving to disk:
 ```bash
-bkey auth setup-agent --name "My Agent" --json | jq -r '.clientId'
+bkey auth setup-agent --name "My Agent" --scopes approve:action,vault:access,identity:read --json | jq -r '.clientId'
 ```
 
 ### First-time agent setup (Claude Code / Anthropic Claude)
 
-If `bkey auth status` shows "config file" (human login) but no agent credentials, the skill should set up agent mode first to ensure proper CIBA approval flows:
+If `bkey auth status` shows a user session but `bkey auth status --agent` reports no agent profile, set up agent mode first:
 
 1. Run: `bkey auth setup-agent --name "Claude Code Agent" --save`
-2. Approve the agent creation on your phone (if prompted)
-3. Verify: `bkey auth status` should show "agent.json (persistent agent mode)"
-4. All subsequent `bkey` commands use agent identity — human approves each action via facial biometrics
+2. Approve the agent creation on your phone (if prompted — the backend requires approval for elevated scopes)
+3. Verify: `bkey profiles` lists the new agent; `bkey auth status --agent` shows its creds
+4. Invoke commands with `--agent` (or `BKEY_MODE=agent`) — human approves each action via facial biometrics
 
 ### Environment variables
 

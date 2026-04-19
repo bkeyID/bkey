@@ -30,7 +30,7 @@ The CLI prints a short user code and a verification URL, opens the URL in your b
 2. Confirm the user code matches.
 3. Approve with facial biometrics.
 
-The CLI unblocks the moment the phone completes approval and writes a session token to `~/.bkey/config.json`. Subsequent `bkey …` commands use it automatically.
+The CLI unblocks the moment the phone completes approval and saves the session as a human profile in `~/.bkey/profiles.json` (default identifier: `default`). Subsequent `bkey …` commands use it automatically. Multiple profiles can coexist — pass `bkey auth login --profile work` to save under a different name, then select with `bkey <cmd> --profile work` or `BKEY_PROFILE=work bkey <cmd>`.
 
 ### Flow at the protocol level
 
@@ -58,23 +58,32 @@ Agents authenticate with the OAuth 2.1 **client credentials** grant — one `cli
 bkey auth setup-agent --name "My Deploy Bot" --save
 ```
 
-- Pushes an approval prompt to the logged-in human's phone (approving the agent's scopes with biometrics).
+- Pushes an approval prompt to the logged-in human's phone if the requested scopes are elevated (biometric approval). Baseline-scope agents (e.g. `approve:action` only) may be created without a phone prompt — all subsequent `bkey approve` calls still go through CIBA at the phone.
 - On approval, BKey returns the agent's `client_id` + `client_secret`.
-- `--save` writes them to `~/.bkey/agent.json` so the CLI can act as the agent automatically.
-- `--json` prints them to stdout instead (for CI secret setup, env vars, etc.).
+- `--save` stores them as an agent profile in `~/.bkey/profiles.json`. The profile identifier is slugified from `--name` (e.g. `"My Deploy Bot"` → `my-deploy-bot`); override explicitly with `--profile <slug>`. Collisions error unless `--overwrite` is passed.
+- `--json` prints the creds to stdout instead (for CI secret setup, env vars, etc.).
 
 ### Running as an agent
 
-Once saved (or exported as env vars), the CLI uses agent mode automatically:
+Since 0.3.0 agent mode is opt-in — a saved agent profile no longer silently overrides your user session. Select agent mode explicitly:
 
 ```bash
-export BKEY_CLIENT_ID=$(jq -r .clientId ~/.bkey/agent.json)
-export BKEY_CLIENT_SECRET=$(jq -r .clientSecret ~/.bkey/agent.json)
-
-# No phone roundtrip — direct client_credentials exchange
-bkey approve "Deploy api-gateway@abc123 to prod" \
-  --scope approve:deploy \
+# Approve as the default agent profile
+bkey approve "Deploy api-gateway@abc123 to prod" --agent \
+  --scope approve:action \
   --user-did did:bkey:...
+
+# Or pin a specific agent profile by name
+bkey approve "…" --agent --profile my-deploy-bot …
+
+# Or via env vars (CI/CD, Docker)
+export BKEY_MODE=agent
+bkey approve "…" …
+
+# Direct client_credentials — bypasses profiles entirely
+export BKEY_CLIENT_ID=bkey_client_xxx
+export BKEY_CLIENT_SECRET=bkey_secret_xxx
+bkey approve "…" …
 ```
 
 ### In code (Python / TypeScript)

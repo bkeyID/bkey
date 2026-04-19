@@ -21,7 +21,7 @@ bkey auth login
 bkey auth setup-agent --name "My Agent" --save
 ```
 
-`setup-agent --save` writes `BKEY_CLIENT_ID` and `BKEY_CLIENT_SECRET` to `~/.bkey/agents/<name>.env`, ready to source.
+`setup-agent --save` stores the new agent as a named profile in `~/.bkey/profiles.json` alongside your human session. The profile identifier is slugified from `--name` (`"My Agent"` → `my-agent`); override with `--profile <slug>`. Agent mode is opt-in — invoke with `--agent` (uses the default agent profile) or `--agent --profile my-agent` (pin a specific one). List all profiles with `bkey profiles`.
 
 ## Biometric approval from the terminal
 
@@ -44,17 +44,23 @@ Add `--json` to get the full approval token on stdout for downstream use. Add `-
 
 | Command | Description |
 |---------|-------------|
-| `bkey auth login` | Device auth flow (QR code). |
-| `bkey auth setup-agent` | Create agent OAuth client credentials. |
-| `bkey auth status` | Show current auth status. |
-| `bkey auth logout` | Revoke tokens. |
-| `bkey approve <msg>` | Generic CIBA approval. |
+| `bkey auth login [--profile <name>]` | Device auth flow (QR code). Creates/updates a named human profile. |
+| `bkey auth setup-agent --save [--name <display>] [--profile <slug>]` | Create agent OAuth client + save as a named profile. |
+| `bkey auth status [--agent] [--profile <name>]` | Show current auth status for the selected principal + profile. |
+| `bkey auth logout [--agent] [--profile <name>] [--all]` | Revoke the active (or named) profile's tokens. |
+| `bkey profiles` | List all profiles (humans + agents). `ls` alias. |
+| `bkey profiles use <name> [--agent]` | Set the default profile for that principal. |
+| `bkey profiles rename <old> <new> [--agent]` | Rename a profile. |
+| `bkey profiles delete <name> [--agent]` | Delete a profile. |
+| `bkey approve <msg>` | Generic CIBA approval (agent-only). |
 | `bkey vault store <name>` | Store a secret with end-to-end encryption. |
 | `bkey vault access <name>` | Request a stored secret (biometric-approved). |
 | `bkey checkout request` | Initiate a checkout approval. |
 | `bkey checkout status <id>` | Poll a checkout. |
 | `bkey proxy <url>` | HTTP proxy that handles 402 payments automatically. |
 | `bkey wrap -- <cmd>` | Run a command with vault secrets injected as env vars (biometric-approved reads). |
+
+Dual-mode commands (`vault`, `proxy`, `wrap`, `checkout`) accept `--agent` / `--human` / `--profile <name>`. `BKEY_PROFILE` and `BKEY_MODE=agent` env vars work for shell workflows.
 
 ## `bkey wrap` — inject vault secrets into a process
 
