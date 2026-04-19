@@ -54,7 +54,7 @@ bkey auth login
 bkey auth setup-agent --name "My Agent" --save
 ```
 
-`--save` writes `BKEY_CLIENT_ID` + `BKEY_CLIENT_SECRET` to `~/.bkey/agent.json`. Use `--json` instead to emit them to stdout for CI secrets.
+`--save` stores the new agent as a named profile in `~/.bkey/profiles.json` alongside your human session (identifier slugified from `--name`). Invoke with `bkey <cmd> --agent` to run as that agent. Use `--json` instead of `--save` to emit the raw credentials to stdout for CI secrets.
 
 **3. Request approval — one call.**
 
