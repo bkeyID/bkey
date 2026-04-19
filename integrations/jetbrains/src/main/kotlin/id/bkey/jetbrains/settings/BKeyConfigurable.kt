@@ -28,8 +28,8 @@ class BKeyConfigurable : Configurable {
         "Auto-install commit-msg hook in every opened git project",
     )
     private val hookStatusLabel = JLabel(" ")
-    private val hookInstallButton = JButton("Install in current project")
-    private val hookRemoveButton = JButton("Remove from current project")
+    private val hookInstallButton = JButton("Install in all open projects")
+    private val hookRemoveButton = JButton("Remove from all open projects")
 
     override fun getDisplayName() = "BKey Approval"
 
@@ -113,66 +113,69 @@ class BKeyConfigurable : Configurable {
         refreshHookStatus()
     }
 
-    private fun currentProjectPath(): String? {
-        val project = ProjectManager.getInstance().openProjects.firstOrNull() ?: return null
-        return project.basePath
-    }
+    /** (displayName, basePath) for every open project that has a basePath. */
+    private fun openProjectPaths(): List<Pair<String, String>> =
+        ProjectManager.getInstance().openProjects
+            .mapNotNull { p -> p.basePath?.let { p.name to it } }
 
     private fun refreshHookStatus() {
-        val path = currentProjectPath()
-        if (path == null) {
-            hookStatusLabel.text = "No open project to manage."
+        val projects = openProjectPaths()
+        if (projects.isEmpty()) {
+            hookStatusLabel.text = "No open projects to manage."
             hookInstallButton.isEnabled = false
             hookRemoveButton.isEnabled = false
             return
         }
-        when (val status = BKeyGitHook.status(path)) {
-            BKeyGitHook.Status.NotAGitRepo -> {
-                hookStatusLabel.text = "Current project is not a git repository."
-                hookInstallButton.isEnabled = false
-                hookRemoveButton.isEnabled = false
+
+        val lines = mutableListOf<String>()
+        var anyInstallable = false
+        var anyRemovable = false
+        for ((name, path) in projects) {
+            val label = when (val status = BKeyGitHook.status(path)) {
+                BKeyGitHook.Status.NotAGitRepo -> "not a git repo"
+                BKeyGitHook.Status.NotInstalled -> { anyInstallable = true; "hook missing" }
+                BKeyGitHook.Status.Installed -> { anyRemovable = true; "hook installed" }
+                is BKeyGitHook.Status.ForeignHook -> "foreign hook — skip"
             }
-            BKeyGitHook.Status.NotInstalled -> {
-                hookStatusLabel.text = "Hook not installed in: $path"
-                hookInstallButton.isEnabled = true
-                hookRemoveButton.isEnabled = false
-            }
-            BKeyGitHook.Status.Installed -> {
-                hookStatusLabel.text = "Hook installed in: $path"
-                hookInstallButton.isEnabled = false
-                hookRemoveButton.isEnabled = true
-            }
-            is BKeyGitHook.Status.ForeignHook -> {
-                hookStatusLabel.text =
-                    "A non-BKey commit-msg hook already exists in: $path — leaving it alone."
-                hookInstallButton.isEnabled = false
-                hookRemoveButton.isEnabled = false
-            }
+            lines += "• $name — $label"
         }
+        hookStatusLabel.text = "<html>" + lines.joinToString("<br>") + "</html>"
+        hookInstallButton.isEnabled = anyInstallable
+        hookRemoveButton.isEnabled = anyRemovable
     }
 
     private fun installHookInCurrentProject() {
-        val path = currentProjectPath() ?: return
-        when (val result = BKeyGitHook.install(path)) {
-            BKeyGitHook.InstallResult.Installed -> hookStatusLabel.text = "Installed in: $path"
-            is BKeyGitHook.InstallResult.FailedForeignHook ->
-                hookStatusLabel.text = "A non-BKey hook already exists at ${result.path}."
-            is BKeyGitHook.InstallResult.Error ->
-                hookStatusLabel.text = "Failed to install: ${result.message}"
+        val projects = openProjectPaths()
+        if (projects.isEmpty()) return
+        val report = mutableListOf<String>()
+        for ((name, path) in projects) {
+            val line = when (val result = BKeyGitHook.install(path)) {
+                BKeyGitHook.InstallResult.Installed -> "$name: installed"
+                is BKeyGitHook.InstallResult.FailedForeignHook ->
+                    "$name: skipped (foreign hook at ${result.path})"
+                is BKeyGitHook.InstallResult.Error -> "$name: error — ${result.message}"
+            }
+            report += "• $line"
         }
+        hookStatusLabel.text = "<html>" + report.joinToString("<br>") + "</html>"
         refreshHookStatus()
     }
 
     private fun removeHookFromCurrentProject() {
-        val path = currentProjectPath() ?: return
-        when (val result = BKeyGitHook.uninstall(path)) {
-            BKeyGitHook.UninstallResult.Removed -> hookStatusLabel.text = "Removed from: $path"
-            BKeyGitHook.UninstallResult.NotInstalled -> hookStatusLabel.text = "Hook was not installed."
-            is BKeyGitHook.UninstallResult.RefusedForeign ->
-                hookStatusLabel.text = "Refused: hook at ${result.path} is not managed by BKey."
-            is BKeyGitHook.UninstallResult.Error ->
-                hookStatusLabel.text = "Failed to remove: ${result.message}"
+        val projects = openProjectPaths()
+        if (projects.isEmpty()) return
+        val report = mutableListOf<String>()
+        for ((name, path) in projects) {
+            val line = when (val result = BKeyGitHook.uninstall(path)) {
+                BKeyGitHook.UninstallResult.Removed -> "$name: removed"
+                BKeyGitHook.UninstallResult.NotInstalled -> "$name: no hook"
+                is BKeyGitHook.UninstallResult.RefusedForeign ->
+                    "$name: refused — foreign hook at ${result.path}"
+                is BKeyGitHook.UninstallResult.Error -> "$name: error — ${result.message}"
+            }
+            report += "• $line"
         }
+        hookStatusLabel.text = "<html>" + report.joinToString("<br>") + "</html>"
         refreshHookStatus()
     }
 }
