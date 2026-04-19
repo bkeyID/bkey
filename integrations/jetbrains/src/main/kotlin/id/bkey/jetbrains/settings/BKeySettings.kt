@@ -13,7 +13,13 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 class BKeySettings : PersistentStateComponent<BKeySettings> {
     var enabled: Boolean = true
     var cliPath: String = "bkey"
-    var scope: String = "approve:git.commit"
+    /**
+     * CIBA scope requested when the plugin asks `bkey approve`. Must be in the
+     * agent's `allowedScopes` set, which for the default `bkey auth setup-agent
+     * --save` agent is just `approve:action`. Change to `approve:payment` or a
+     * custom scope ONLY if the agent was created with that scope granted.
+     */
+    var scope: String = "approve:action"
     var timeoutSeconds: Int = 120
     var userDid: String = ""
     var includeDiffSummary: Boolean = true
@@ -29,6 +35,13 @@ class BKeySettings : PersistentStateComponent<BKeySettings> {
 
     override fun loadState(state: BKeySettings) {
         XmlSerializerUtil.copyBean(state, this)
+        // One-shot migration: the pre-0.3.0 default was `approve:git.commit`,
+        // which is not a scope the default `bkey auth setup-agent` agent is
+        // granted (it gets `approve:action`). Auto-upgrade anyone still on the
+        // old default; leave custom scopes alone.
+        if (scope == "approve:git.commit") {
+            scope = "approve:action"
+        }
     }
 
     companion object {

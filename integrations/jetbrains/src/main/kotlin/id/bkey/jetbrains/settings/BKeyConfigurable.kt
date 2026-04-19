@@ -56,7 +56,7 @@ class BKeyConfigurable : Configurable {
         s.enabled = enabled.isSelected
         s.includeDiffSummary = includeDiffSummary.isSelected
         s.cliPath = cliPath.text.trim().ifEmpty { "bkey" }
-        s.scope = scope.text.trim().ifEmpty { "approve:git.commit" }
+        s.scope = scope.text.trim().ifEmpty { "approve:action" }
         s.timeoutSeconds = timeoutSeconds.text.trim().toIntOrNull()?.coerceIn(10, 900) ?: 120
         s.userDid = userDid.text.trim()
         s.agentProfile = agentProfile.text.trim()

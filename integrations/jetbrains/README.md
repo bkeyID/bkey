@@ -97,7 +97,7 @@ Or run a sandbox IDE with the plugin pre-loaded:
 | Require BKey approval for commits | `true` | Master switch |
 | bkey CLI path | `bkey` | Full path if not on PATH (e.g. `/usr/local/bin/bkey`) |
 | Agent profile | *(empty)* | Named agent profile to use (CLI ≥ 0.3.0). Empty = CLI's default agent. |
-| Approval scope | `approve:git.commit` | CIBA scope passed to `--scope` |
+| Approval scope | `approve:action` | CIBA scope passed to `--scope`. Must be one of the agent's allowed scopes — `bkey auth setup-agent --save` grants `approve:action` by default. |
 | Timeout (seconds) | `120` | Max wait for phone approval |
 | User DID | *(empty)* | Override `--user-did`; empty = CLI falls back to the logged-in session's DID |
 | Include diff summary | `true` | Append file list to the binding message |
