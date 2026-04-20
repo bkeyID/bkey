@@ -239,7 +239,17 @@ function migrateLegacy(): ProfilesStore | null {
 }
 
 function resolveApiUrlFromEnv(): string {
-  return (process.env.BKEY_BASE_URL || 'https://api.bkey.id').replace(/\/$/, '');
+  // Legacy-profile migration path: a pre-0.3.0 agent.json had no `apiUrl`
+  // recorded, so first-load falls back to the environment. Preserve the old
+  // precedence ($BKEY_BASE_URL wins) so a user mid-upgrade doesn't have a
+  // stored profile silently rebound to a different host just because they
+  // set $BKEY_API_URL in parallel. The migrated profile is written back with
+  // an explicit apiUrl, so this helper is effectively a one-shot.
+  const raw =
+    process.env.BKEY_BASE_URL
+    || process.env.BKEY_API_URL
+    || 'https://api.bkey.id';
+  return raw.replace(/\/$/, '');
 }
 
 let cached: ProfilesStore | null = null;

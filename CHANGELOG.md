@@ -26,10 +26,16 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ### Fixed
 
+- **Device-auth login opens the correct verification URL when `--base-url` is an explicit API host.** Previously any explicit `--base-url` / `$BKEY_BASE_URL` made the CLI ignore the server's RFC 8628 `verification_uri` and reconstruct `${apiUrl}/device` instead, which only works when the API and the browser-facing `/device` page share a host. With split deployments (e.g. `api.bkey.id` + `bkey.id`) this sent the browser to a non-canonical URL. The rewrite is now restricted to loopback hosts (`localhost`, the full `127.0.0.0/8` block, `::1`), where the backend self-serves `/device` for single-process local dev; all other hosts use the server-provided URL verbatim.
+- **Verification URL is parsed and validated before opening.** Replaced a `^https?://` regex with a full `URL` parse that rejects non-`http(s)` schemes and URLs carrying embedded userinfo (e.g. `https://evil.com@attacker.com/...`), closing a latent open-redirect / phishing surface when the browser launcher is handed a hostile response.
 - `bkey approve` previously errored with "No user DID specified" whenever agent mode was active because `requireConfig()` dropped the saved session DID. The target DID is now resolved independently from caller identity.
 - `bkey auth status` wasn't aware of competing principals; `status` and `status --agent` now show the appropriate profile view and surface the other principal's presence as a hint.
 - **Refreshed access/refresh tokens are now persisted back to `profiles.json`.** Previously the SDK refreshed tokens in-memory only, so any human-mode CLI invocation that triggered a refresh would burn the refresh token — the next invocation failed with "refresh token already used". A new `createClient()` helper wires the SDK's `onTokenRefresh` + `reloadConfig` hooks automatically for every command that uses a human-profile principal. (Latent in 0.2.x; would have shipped as a regression at 0.3.0.)
 - **`setup-agent` default `--scopes` trimmed** from a laundry list that included `payment:*`, `vault:*`, `signing:*` down to just `approve:action` — the minimum needed for the common case (CIBA approval agent) and a strict subset of what any user session grants. Users that need broader agents should pass `--scopes` explicitly. Previous default broke on any session whose grant didn't include all listed scopes (error: *"cannot grant scopes beyond your own"*).
+
+### Changed
+
+- **`$BKEY_API_URL` is now the preferred env var for the API base URL.** `$BKEY_BASE_URL` still works as a fallback but emits a one-time deprecation notice on stderr; the two names previously collided with a similarly named backend variable that carries different semantics. An additional one-time warning fires when both names are set and differ (`$BKEY_API_URL` wins in that case) so a silent host change doesn't slip through during upgrade. Help text for `--base-url` updated accordingly. Precedence: `--base-url` flag > `$BKEY_API_URL` > `$BKEY_BASE_URL` (deprecated) > `https://api.bkey.id`.
 
 ### Internal
 

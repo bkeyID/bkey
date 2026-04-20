@@ -1,6 +1,7 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
+import { isIPv4 } from 'node:net';
 import {
   saveHumanProfile,
   saveAgentProfile,
@@ -23,15 +24,57 @@ import { pollDeviceAuth } from '../lib/device-auth-poll.js';
 export const authCommand = new Command('auth')
   .description('Manage BKey CLI authentication');
 
+/**
+ * True when the API URL points at a loopback host that is expected to
+ * self-serve the `/device` approval page (local dev). For any other host
+ * we trust the server's RFC 8628 `verification_uri` response verbatim.
+ */
+function isLoopbackApiUrl(apiUrl: string): boolean {
+  try {
+    // WHATWG URL returns IPv6 hostnames wrapped in brackets, e.g. "[::1]";
+    // also normalize a trailing root-zone dot like "localhost.".
+    const host = new URL(apiUrl).hostname
+      .replace(/^\[|\]$/g, '')
+      .replace(/\.$/, '');
+    // host.docker.internal is intentionally NOT here: it's only reachable
+    // from inside a container, so printing it as the browser URL would
+    // send the dev's desktop browser to an unresolvable host. In that case
+    // the server-provided verification_uri (set via the backend's
+    // BKEY_BASE_URL) is the right thing to display.
+    if (host === 'localhost' || host === '::1') return true;
+    // Whole 127.0.0.0/8 block (RFC 1122) — rejects spoofs like "127.evil.com"
+    // by requiring a syntactically valid IPv4 address.
+    return isIPv4(host) && host.startsWith('127.');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate a verification URI before handing it to the OS "open" command.
+ * Rejects non-http(s) schemes and URLs that carry embedded userinfo
+ * (e.g. `https://evil.com@attacker.com`), both of which would let a
+ * compromised or spoofed response redirect the browser to an arbitrary target.
+ */
+function assertSafeVerificationUri(uri: string): void {
+  const parsed = new URL(uri);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`non-http(s) scheme: ${parsed.protocol}`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('verification URI contains embedded user info');
+  }
+}
+
 // ─── bkey auth login ───────────────────────────────────────────────
 
 authCommand
   .command('login')
   .description('Authenticate a human principal via device authorization flow')
-  .option('--base-url <url>', 'BKey base URL (default: $BKEY_BASE_URL or https://api.bkey.id)')
+  .option('--base-url <url>', 'API base URL (default: $BKEY_API_URL or https://api.bkey.id)')
   .option('--profile <name>', 'Profile identifier to save as (default: "default")', 'default')
   .action(async (opts: { baseUrl?: string; profile: string }) => {
-    const apiUrl = (opts.baseUrl || process.env.BKEY_BASE_URL || 'https://api.bkey.id').replace(/\/$/, '');
+    const apiUrl = resolveApiUrl(opts.baseUrl);
     const profileName = opts.profile || 'default';
 
     console.log(`Starting device authorization flow (profile: ${profileName})...\n`);
@@ -59,16 +102,21 @@ authCommand
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`Failed to connect to ${apiUrl}: ${msg}`);
-      console.error('Is the backend running? Check --base-url or $BKEY_BASE_URL.');
+      console.error('Is the backend running? Check --base-url or $BKEY_API_URL.');
       process.exit(1);
     }
 
     const userCode = initJson.user_code as string;
-    const hasExplicitBaseUrl = opts.baseUrl || process.env.BKEY_BASE_URL;
-    const verificationUri = hasExplicitBaseUrl
+    // For split-deployment (prod + most self-hosted) the API URL and the
+    // browser-facing verification URL are on different hosts — trust what the
+    // authorization server returned per RFC 8628 §3.2. Only rewrite when the
+    // API URL is loopback, where the backend self-serves the /device page
+    // and the local server's returned origin is unusable from the dev's browser.
+    const rewriteForLocalDev = isLoopbackApiUrl(apiUrl);
+    const verificationUri = rewriteForLocalDev
       ? `${apiUrl}/device`
-      : initJson.verification_uri as string;
-    const verificationUriComplete = hasExplicitBaseUrl
+      : (initJson.verification_uri as string);
+    const verificationUriComplete = rewriteForLocalDev
       ? `${apiUrl}/device?user_code=${userCode}`
       : (initJson.verification_uri_complete as string) ?? `${verificationUri}?user_code=${userCode}`;
     const deviceCode = initJson.device_code as string;
@@ -97,9 +145,7 @@ authCommand
     }
 
     try {
-      if (!/^https?:\/\//i.test(verificationUriComplete)) {
-        throw new Error('Server returned non-HTTP verification URI');
-      }
+      assertSafeVerificationUri(verificationUriComplete);
       const { execFile } = await import('node:child_process');
       const openCmd = process.platform === 'darwin' ? 'open'
         : process.platform === 'win32' ? 'start'
@@ -145,7 +191,7 @@ authCommand
 authCommand
   .command('setup-agent')
   .description('Create an OAuth client for agent/CI use (requires prior human login)')
-  .option('--base-url <url>', "BKey base URL (overrides the active human profile's API URL)")
+  .option('--base-url <url>', "API base URL (overrides the active human profile's API URL)")
   .option('--name <name>', 'Display name shown in the phone approval dialog', 'My Agent')
   .option(
     '--profile <name>',
