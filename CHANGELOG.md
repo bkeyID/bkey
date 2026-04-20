@@ -6,7 +6,7 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ---
 
-## `@bkey/cli` 0.3.0 — unreleased
+## `@bkey/cli` 0.3.0 — 2026-04-19
 
 ### Breaking
 
