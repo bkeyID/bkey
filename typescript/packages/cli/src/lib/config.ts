@@ -48,9 +48,52 @@ export interface RequireConfigOptions {
   human?: boolean;
 }
 
-/** Resolve the API base URL from env vars. */
-export function resolveApiUrl(): string {
-  return (process.env.BKEY_BASE_URL || 'https://api.bkey.id').replace(/\/$/, '');
+let warnedEnvOnce = false;
+
+/**
+ * Emit a one-time stderr notice when env-var state around the API base URL
+ * deserves the user's attention:
+ *   - $BKEY_BASE_URL is set alone (deprecated in favor of $BKEY_API_URL).
+ *   - Both names are set AND point at different hosts — the new precedence
+ *     silently prefers $BKEY_API_URL, which would be a surprising host change
+ *     for scripts that still relied on $BKEY_BASE_URL. We never pick for the
+ *     user in that case; we just surface the conflict.
+ */
+function maybeWarnEnvOnce(): void {
+  if (warnedEnvOnce) return;
+  const api = process.env.BKEY_API_URL;
+  const legacy = process.env.BKEY_BASE_URL;
+  if (api && legacy && api.replace(/\/$/, '') !== legacy.replace(/\/$/, '')) {
+    warnedEnvOnce = true;
+    process.stderr.write(
+      `bkey: BKEY_API_URL (${api}) and BKEY_BASE_URL (${legacy}) are both set and differ; `
+        + `BKEY_API_URL wins. Unset BKEY_BASE_URL to silence this notice.\n`,
+    );
+    return;
+  }
+  if (!api && legacy) {
+    warnedEnvOnce = true;
+    process.stderr.write(
+      'bkey: BKEY_BASE_URL is deprecated; use BKEY_API_URL instead.\n',
+    );
+  }
+}
+
+/**
+ * Resolve the API base URL. Precedence:
+ *   1. explicit arg (e.g. `--base-url` flag)
+ *   2. `$BKEY_API_URL`
+ *   3. `$BKEY_BASE_URL` (deprecated, one-time stderr warning)
+ *   4. `https://api.bkey.id`
+ */
+export function resolveApiUrl(explicitBaseUrl?: string): string {
+  if (!explicitBaseUrl) maybeWarnEnvOnce();
+  const raw =
+    explicitBaseUrl
+    || process.env.BKEY_API_URL
+    || process.env.BKEY_BASE_URL
+    || 'https://api.bkey.id';
+  return raw.replace(/\/$/, '');
 }
 
 /** True iff the caller asked for agent mode via flag or `BKEY_MODE=agent`. */
