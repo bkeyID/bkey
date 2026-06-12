@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   BkeyLoginError,
   type AuthorizationRequest,
@@ -16,6 +16,30 @@ function b64url(buf: Buffer): string {
   return buf.toString('base64url');
 }
 
+/** Constant-time string equality (length leak is fine — values are fixed-size). */
+function safeEqual(a: string, b: string): boolean {
+  const ba = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
+
+/**
+ * Endpoints taken from the discovery document must live on the configured
+ * issuer's origin. The issuer-equality check pins the document; this pins
+ * every URL we subsequently fetch from it (jwks_uri, registration_endpoint),
+ * so a tampered document can never redirect key material or registration
+ * traffic off-origin (codex review).
+ */
+function assertSameOrigin(issuer: string, url: string, what: string): string {
+  if (new URL(url).origin !== new URL(issuer).origin) {
+    throw new BkeyLoginError(
+      'discovery_endpoint_off_origin',
+      `${what} (${url}) is not on the issuer origin (${issuer})`,
+    );
+  }
+  return url;
+}
+
 async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
   const res = await fetch(`${issuer.replace(/\/$/, '')}${DISCOVERY_PATH}`, {
     headers: { accept: 'application/json' },
@@ -28,6 +52,16 @@ async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
     throw new BkeyLoginError(
       'discovery_incomplete',
       'issuer discovery document is missing authorization/token/jwks endpoints — is Login with bkey enabled on this environment?',
+    );
+  }
+  // OIDC Discovery §4.3: the document's self-declared issuer MUST equal the
+  // issuer the client was configured with. Without this check, every later
+  // `iss` validation would anchor to a value the (possibly tampered or
+  // misconfigured) document chose for itself.
+  if (doc.issuer.replace(/\/$/, '') !== issuer.replace(/\/$/, '')) {
+    throw new BkeyLoginError(
+      'issuer_mismatch',
+      `discovery issuer "${doc.issuer}" does not match configured issuer "${issuer}"`,
     );
   }
   return doc;
@@ -54,6 +88,7 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
       'this bkey environment does not advertise a registration_endpoint',
     );
   }
+  assertSameOrigin(opts.issuer, discovery.registration_endpoint, 'registration_endpoint');
   const res = await fetch(discovery.registration_endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -63,7 +98,9 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
         ? { post_logout_redirect_uris: opts.postLogoutRedirectUris }
         : {}),
       ...(opts.clientName ? { client_name: opts.clientName } : {}),
-      token_endpoint_auth_method: opts.tokenEndpointAuthMethod ?? 'client_secret_basic',
+      // bkey's token endpoint reads credentials from the form body
+      // (discovery advertises client_secret_post) — default to match.
+      token_endpoint_auth_method: opts.tokenEndpointAuthMethod ?? 'client_secret_post',
       grant_types: ['authorization_code'],
       response_types: ['code'],
       scope: 'openid',
@@ -111,7 +148,9 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
   const discovery = () => (discoveryPromise ??= fetchDiscovery(config.issuer));
   const jwks = async () => {
     if (!jwksCache) {
-      jwksCache = createRemoteJWKSet(new URL((await discovery()).jwks_uri));
+      const doc = await discovery();
+      assertSameOrigin(config.issuer, doc.jwks_uri, 'jwks_uri');
+      jwksCache = createRemoteJWKSet(new URL(doc.jwks_uri));
     }
     return jwksCache;
   };
@@ -123,7 +162,7 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       const state = b64url(randomBytes(24));
       const nonce = b64url(randomBytes(24));
       const codeVerifier = b64url(randomBytes(48));
-      const challenge = b64url(createHash('sha256').update(codeVerifier, 'ascii').digest());
+      const challenge = b64url(createHash('sha256').update(codeVerifier).digest());
       const url = new URL(doc.authorization_endpoint);
       url.searchParams.set('response_type', 'code');
       url.searchParams.set('client_id', config.clientId);
@@ -152,7 +191,7 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       const code = cb.searchParams.get('code');
       const state = cb.searchParams.get('state');
       if (!code) throw new BkeyLoginError('missing_code', 'callback has no code parameter');
-      if (state !== expected.state) {
+      if (!state || !safeEqual(state, expected.state)) {
         throw new BkeyLoginError('state_mismatch', 'callback state does not match — possible CSRF');
       }
       const doc = await discovery();
@@ -179,10 +218,13 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       const { payload } = await jwtVerify(idToken, await jwks(), {
         issuer: doc.issuer,
         audience: config.clientId,
-        // bkey signs EdDSA by default; RS256 for clients registered with it.
+        // Static known-safe allowlist, deliberately NOT derived from the
+        // discovery document: a tampered doc must never be able to widen
+        // the accepted algorithms (downgrade vector). bkey signs EdDSA by
+        // default; RS256 for clients registered with it.
         algorithms: ['EdDSA', 'RS256'],
       });
-      if (payload.nonce !== expected.nonce) {
+      if (typeof payload.nonce !== 'string' || !safeEqual(payload.nonce, expected.nonce)) {
         throw new BkeyLoginError('nonce_mismatch', 'id_token nonce does not match — possible replay');
       }
       if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
