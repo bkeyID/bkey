@@ -1,0 +1,51 @@
+{
+  "name": "@bkey/login",
+  "version": "0.1.0",
+  "description": "Login with bkey — drop-in OIDC sign-in (passwordless, biometric, phishing-resistant) for websites and apps. Self-serve client registration, PKCE flow helpers, id_token verification, and an Auth.js provider preset.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./authjs": {
+      "import": "./dist/authjs.js",
+      "types": "./dist/authjs.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "jose": "~5.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bkeyID/bkey.git",
+    "directory": "typescript/packages/login"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "bkey",
+    "oidc",
+    "openid-connect",
+    "login",
+    "passwordless",
+    "biometric",
+    "authjs",
+    "nextauth"
+  ]
+}
