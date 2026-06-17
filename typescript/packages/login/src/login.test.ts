@@ -33,7 +33,15 @@ const opState: {
   lastCodeChallenge: string | null;
   tamperNonce: boolean;
   aud: string;
-} = { nonce: null, lastCodeVerifier: null, lastCodeChallenge: null, tamperNonce: false, aud: CLIENT_ID };
+  omitExp: boolean;
+} = {
+  nonce: null,
+  lastCodeVerifier: null,
+  lastCodeChallenge: null,
+  tamperNonce: false,
+  aud: CLIENT_ID,
+  omitExp: false,
+};
 
 beforeAll(async () => {
   // jose v5 names the keygen alg 'EdDSA' (v6 renamed it 'Ed25519').
@@ -82,17 +90,20 @@ beforeAll(async () => {
       for await (const chunk of req) body += chunk;
       const params = new URLSearchParams(body);
       opState.lastCodeVerifier = params.get('code_verifier');
-      const idToken = await new SignJWT({
+      let signer = new SignJWT({
         nonce: opState.tamperNonce ? 'evil-nonce' : opState.nonce,
         token_type: 'id',
       })
         .setProtectedHeader({ alg: 'EdDSA', kid: edJwk.kid! })
         .setSubject('did:bkey:zLoginSdkUser')
         .setIssuer(ISSUER)
-        .setAudience(opState.aud)
-        .setIssuedAt()
-        .setExpirationTime('5m')
-        .sign(edPrivate);
+        .setAudience(opState.aud);
+      // A non-conformant OP that omits exp/iat — the SDK must reject it
+      // rather than treat the id_token as never-expiring.
+      if (!opState.omitExp) {
+        signer = signer.setIssuedAt().setExpirationTime('5m');
+      }
+      const idToken = await signer.sign(edPrivate);
       return send(200, {
         access_token: 'at_x',
         refresh_token: 'rt_x',
@@ -199,6 +210,16 @@ describe('handleCallback', () => {
     const cb = `${REDIRECT}?code=authcode_4&state=${encodeURIComponent(auth.state)}`;
     await expect(bkey.handleCallback(cb, auth)).rejects.toThrow();
     opState.aud = CLIENT_ID;
+  });
+
+  it('rejects an id_token with no exp claim (must not accept a never-expiring token)', async () => {
+    const bkey = loginFor();
+    const auth = await bkey.authorizationUrl();
+    opState.nonce = auth.nonce;
+    opState.omitExp = true;
+    const cb = `${REDIRECT}?code=authcode_noexp&state=${encodeURIComponent(auth.state)}`;
+    await expect(bkey.handleCallback(cb, auth)).rejects.toThrow();
+    opState.omitExp = false;
   });
 
   it('surfaces OP errors from the callback', async () => {

@@ -9,8 +9,11 @@ via [Auth.js](https://authjs.dev) + [`@bkey/login`](../../../typescript/packages
 npm install
 
 # 1. Get credentials — self-serve, no dashboard, no account (RFC 7591):
-ISSUER=https://staging-api.bkey.id npm run register
-#    → paste the printed BKEY_CLIENT_ID / BKEY_CLIENT_SECRET / AUTH_SECRET into .env.local
+BKEY_ISSUER=https://staging-api.bkey.id npm run register
+#    → paste ALL printed lines (BKEY_ISSUER / BKEY_CLIENT_ID / BKEY_CLIENT_SECRET /
+#      AUTH_SECRET) into .env.local. BKEY_ISSUER pins the app to the SAME issuer you
+#      registered against — without it the app defaults to production and would reject
+#      a staging-registered client.
 
 # 2. Go
 npm run dev   # http://localhost:3000 → "Sign in with bkey"

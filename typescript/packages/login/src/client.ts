@@ -223,6 +223,13 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
         // the accepted algorithms (downgrade vector). bkey signs EdDSA by
         // default; RS256 for clients registered with it.
         algorithms: ['EdDSA', 'RS256'],
+        // jose validates `exp`/`nbf` only when present; OIDC REQUIRES `exp`
+        // (and `iat`) on an id_token, so require them explicitly — otherwise
+        // a token minted without `exp` would verify and never expire.
+        requiredClaims: ['exp', 'iat'],
+        // Tolerate small clock skew between the RP and the IdP (numeric
+        // seconds — unambiguous across jose versions).
+        clockTolerance: 30,
       });
       if (typeof payload.nonce !== 'string' || !safeEqual(payload.nonce, expected.nonce)) {
         throw new BkeyLoginError('nonce_mismatch', 'id_token nonce does not match — possible replay');

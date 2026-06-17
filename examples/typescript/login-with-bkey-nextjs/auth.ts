@@ -8,7 +8,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     BkeyProvider({
       clientId: process.env.BKEY_CLIENT_ID!,
       clientSecret: process.env.BKEY_CLIENT_SECRET!,
-      // For staging: issuer: 'https://staging-api.bkey.id'
+      // MUST match the issuer you registered against — the register script
+      // pins BKEY_ISSUER into .env.local so the two never drift. Falls back
+      // to the @bkey/login production default when unset.
+      issuer: process.env.BKEY_ISSUER,
     }),
   ],
   callbacks: {
