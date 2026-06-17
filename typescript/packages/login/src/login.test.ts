@@ -34,6 +34,7 @@ const opState: {
   tamperNonce: boolean;
   aud: string;
   omitExp: boolean;
+  offOriginToken: boolean;
 } = {
   nonce: null,
   lastCodeVerifier: null,
@@ -41,6 +42,7 @@ const opState: {
   tamperNonce: false,
   aud: CLIENT_ID,
   omitExp: false,
+  offOriginToken: false,
 };
 
 beforeAll(async () => {
@@ -63,7 +65,11 @@ beforeAll(async () => {
       return send(200, {
         issuer: ISSUER,
         authorization_endpoint: `${ISSUER}/oauth/authorize`,
-        token_endpoint: `${ISSUER}/oauth/token`,
+        // A tampered discovery doc that keeps a valid `issuer` but points the
+        // token endpoint at an attacker host (credential-exfil vector).
+        token_endpoint: opState.offOriginToken
+          ? 'https://evil.example.com/oauth/token'
+          : `${ISSUER}/oauth/token`,
         jwks_uri: `${ISSUER}/oauth/jwks`,
         registration_endpoint: `${ISSUER}/oauth/register`,
         end_session_endpoint: `${ISSUER}/oauth/end_session`,
@@ -230,6 +236,20 @@ describe('handleCallback', () => {
       code: 'access_denied',
     });
   });
+
+  it('rejects an off-origin token_endpoint from the discovery doc (no code/secret exfil)', async () => {
+    // fetchDiscovery pins EVERY endpoint up front, so a tampered token_endpoint
+    // is caught at the first discovery fetch — before any code/secret is POSTed.
+    opState.offOriginToken = true;
+    try {
+      const bkey = loginFor();
+      await expect(bkey.authorizationUrl()).rejects.toMatchObject({
+        code: 'discovery_endpoint_off_origin',
+      });
+    } finally {
+      opState.offOriginToken = false;
+    }
+  });
 });
 
 describe('endSessionUrl', () => {
@@ -255,6 +275,9 @@ describe('BkeyProvider (Auth.js preset)', () => {
     expect(p.issuer).toBe('https://auth.bkey.id');
     expect(p.checks).toEqual(['pkce', 'nonce']);
     expect(p.client.id_token_signed_response_alg).toBe('EdDSA');
+    // Must match registerClient's default + the bkey token endpoint (which only
+    // accepts client_secret_post); else Auth.js would default to Basic and fail.
+    expect(p.client.token_endpoint_auth_method).toBe('client_secret_post');
     expect(p.profile({ sub: 'did:bkey:zU' })).toEqual({ id: 'did:bkey:zU' });
     expect(BkeyProvider({ clientId: 'a', issuer: 'https://staging-api.bkey.id' }).issuer).toBe(
       'https://staging-api.bkey.id',

@@ -41,7 +41,7 @@ export interface BkeyAuthjsProvider {
   authorization: { params: { scope: string } };
   checks: ['pkce', 'nonce'];
   idToken: true;
-  client: { id_token_signed_response_alg: string };
+  client: { id_token_signed_response_alg: string; token_endpoint_auth_method: string };
   profile: (profile: { sub: string }) => { id: string };
   style: { brandColor: string };
 }
@@ -61,8 +61,16 @@ export function BkeyProvider(options: BkeyProviderOptions): BkeyAuthjsProvider {
     checks: ['pkce', 'nonce'],
     idToken: true,
     // bkey signs EdDSA by default; if your client was registered with RS256,
-    // pass issuer/client overrides accordingly.
-    client: { id_token_signed_response_alg: 'EdDSA' },
+    // pass issuer/client overrides accordingly. `token_endpoint_auth_method`
+    // MUST match how the client is registered and what the IdP supports:
+    // `registerClient` defaults to `client_secret_post` and the bkey token
+    // endpoint only accepts client_secret_post — without pinning it here Auth.js
+    // would fall back to `client_secret_basic` and every confidential-client
+    // token exchange would fail invalid_client (PR #32 review).
+    client: {
+      id_token_signed_response_alg: 'EdDSA',
+      token_endpoint_auth_method: 'client_secret_post',
+    },
     profile: (profile) => ({ id: profile.sub }),
     style: { brandColor: '#B001B0' },
   };

@@ -64,6 +64,20 @@ async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
       `discovery issuer "${doc.issuer}" does not match configured issuer "${issuer}"`,
     );
   }
+  // Pin EVERY endpoint to the issuer origin here, once, so no consumer can be
+  // tricked into sending traffic (the auth code + client_secret + PKCE verifier
+  // on the token endpoint especially) to an attacker host advertised by a
+  // tampered discovery document. The issuer-equality check above only pins the
+  // document's self-declared `issuer`, not the individual endpoint URLs.
+  assertSameOrigin(issuer, doc.authorization_endpoint, 'authorization_endpoint');
+  assertSameOrigin(issuer, doc.token_endpoint, 'token_endpoint');
+  assertSameOrigin(issuer, doc.jwks_uri, 'jwks_uri');
+  if (doc.registration_endpoint) {
+    assertSameOrigin(issuer, doc.registration_endpoint, 'registration_endpoint');
+  }
+  if (doc.end_session_endpoint) {
+    assertSameOrigin(issuer, doc.end_session_endpoint, 'end_session_endpoint');
+  }
   return doc;
 }
 
@@ -197,6 +211,10 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       const doc = await discovery();
       const tokenRes = await fetch(doc.token_endpoint, {
         method: 'POST',
+        // The token endpoint returns JSON and never redirects; refuse to follow
+        // a 3xx so a (same-origin) endpoint can't bounce this POST — carrying the
+        // code + client_secret + PKCE verifier — to an off-origin host.
+        redirect: 'error',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           grant_type: 'authorization_code',
