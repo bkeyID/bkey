@@ -9,7 +9,8 @@ BKey provides OAuth 2.1 + CIBA (Client-Initiated Backchannel Authentication) so 
 ### TypeScript / JavaScript
 
 ```bash
-npm install @bkey/sdk    # Core client
+npm install @bkey/sdk    # Core client (agent approvals, vault, checkout)
+npm install @bkey/login  # Login with bkey — passwordless OIDC sign-in for your site
 npm install @bkey/cli -g # CLI tool
 ```
 
