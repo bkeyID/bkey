@@ -273,15 +273,24 @@ describe('BkeyProvider (Auth.js preset)', () => {
     const p = BkeyProvider({ clientId: 'abc', clientSecret: 'xyz' });
     expect(p.type).toBe('oidc');
     expect(p.issuer).toBe('https://auth.bkey.id');
-    expect(p.checks).toEqual(['pkce', 'nonce']);
+    // state (CSRF) alongside pkce + nonce.
+    expect(p.checks).toEqual(['pkce', 'nonce', 'state']);
     expect(p.client.id_token_signed_response_alg).toBe('EdDSA');
-    // Must match registerClient's default + the bkey token endpoint (which only
-    // accepts client_secret_post); else Auth.js would default to Basic and fail.
+    // Confidential client (secret present) → client_secret_post (the bkey token
+    // endpoint only accepts that); else Auth.js would default to Basic and fail.
     expect(p.client.token_endpoint_auth_method).toBe('client_secret_post');
     expect(p.profile({ sub: 'did:bkey:zU' })).toEqual({ id: 'did:bkey:zU' });
     expect(BkeyProvider({ clientId: 'a', issuer: 'https://staging-api.bkey.id' }).issuer).toBe(
       'https://staging-api.bkey.id',
     );
+  });
+
+  it("a public (no-secret, PKCE-only) client uses token_endpoint_auth_method 'none'", () => {
+    const p = BkeyProvider({ clientId: 'public-spa' });
+    expect(p.clientSecret).toBeUndefined();
+    // Must NOT claim client_secret_post when there is no secret to post.
+    expect(p.client.token_endpoint_auth_method).toBe('none');
+    expect(p.checks).toEqual(['pkce', 'nonce', 'state']);
   });
 });
 

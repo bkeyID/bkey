@@ -19,10 +19,13 @@ export interface RegisterClientOptions {
   /** Allowlisted post-logout redirect targets (OIDC RP-Initiated Logout). */
   postLogoutRedirectUris?: string[];
   /**
-   * `'client_secret_basic'` (default — you get a secret back) or `'none'`
-   * for public clients (SPAs / native) that rely on PKCE alone.
+   * `'client_secret_post'` (default — you get a secret back) or `'none'` for
+   * public clients (SPAs / native) that rely on PKCE alone. NOT
+   * `client_secret_basic`: createBkeyLogin / BkeyProvider always send the secret
+   * in the form body and the bkey token endpoint only accepts client_secret_post,
+   * so registering Basic would never authenticate (PR #32 review).
    */
-  tokenEndpointAuthMethod?: 'client_secret_basic' | 'client_secret_post' | 'none';
+  tokenEndpointAuthMethod?: 'client_secret_post' | 'none';
 }
 
 export interface RegisteredClient {

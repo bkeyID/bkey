@@ -39,7 +39,7 @@ export interface BkeyAuthjsProvider {
   clientId: string;
   clientSecret?: string;
   authorization: { params: { scope: string } };
-  checks: ['pkce', 'nonce'];
+  checks: ['pkce', 'nonce', 'state'];
   idToken: true;
   client: { id_token_signed_response_alg: string; token_endpoint_auth_method: string };
   profile: (profile: { sub: string }) => { id: string };
@@ -58,18 +58,21 @@ export function BkeyProvider(options: BkeyProviderOptions): BkeyAuthjsProvider {
     clientSecret: options.clientSecret,
     // v1 shares exactly one claim: sub — the user's stable pseudonymous DID.
     authorization: { params: { scope: 'openid' } },
-    checks: ['pkce', 'nonce'],
+    // state (CSRF) alongside PKCE + nonce; Auth.js round-trips it through the
+    // signed callback cookie (PR #32 review).
+    checks: ['pkce', 'nonce', 'state'],
     idToken: true,
     // bkey signs EdDSA by default; if your client was registered with RS256,
     // pass issuer/client overrides accordingly. `token_endpoint_auth_method`
     // MUST match how the client is registered and what the IdP supports:
-    // `registerClient` defaults to `client_secret_post` and the bkey token
-    // endpoint only accepts client_secret_post — without pinning it here Auth.js
-    // would fall back to `client_secret_basic` and every confidential-client
-    // token exchange would fail invalid_client (PR #32 review).
+    // confidential clients register `client_secret_post` (the only secret
+    // method the bkey token endpoint accepts), while a PUBLIC client (no
+    // clientSecret — PKCE only, registered auth method `none`) must use `none`
+    // or Auth.js would try to send a non-existent secret. Without pinning this
+    // Auth.js defaults to `client_secret_basic`, which fails for both (PR #32).
     client: {
       id_token_signed_response_alg: 'EdDSA',
-      token_endpoint_auth_method: 'client_secret_post',
+      token_endpoint_auth_method: options.clientSecret ? 'client_secret_post' : 'none',
     },
     profile: (profile) => ({ id: profile.sub }),
     style: { brandColor: '#B001B0' },
