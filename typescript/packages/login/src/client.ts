@@ -86,7 +86,7 @@ async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
  *
  * ```ts
  * const { clientId, clientSecret } = await registerClient({
- *   issuer: 'https://auth.bkey.id',
+ *   issuer: 'https://id.bkey.id',
  *   redirectUris: ['https://yourapp.com/auth/callback/bkey'],
  *   clientName: 'Your App',
  * });

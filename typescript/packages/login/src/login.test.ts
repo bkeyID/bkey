@@ -10,7 +10,7 @@ import {
 } from 'jose';
 import { createBkeyLogin, registerClient } from './client.js';
 import { BkeyLoginError } from './types.js';
-import { BkeyProvider } from './authjs.js';
+import { BKEY_DEFAULT_ISSUER, BkeyProvider } from './authjs.js';
 
 /**
  * Full-flow tests against an in-process mock bkey OP: discovery + JWKS +
@@ -272,7 +272,11 @@ describe('BkeyProvider (Auth.js preset)', () => {
   it('emits a pkce+nonce OIDC provider config with sub-only profile', () => {
     const p = BkeyProvider({ clientId: 'abc', clientSecret: 'xyz' });
     expect(p.type).toBe('oidc');
-    expect(p.issuer).toBe('https://auth.bkey.id');
+    // The default MUST be the self-consistent issuer host. `auth.bkey.id`
+    // serves discovery but declares `issuer: https://id.bkey.id`, so it fails
+    // the OIDC Discovery §4.3 issuer-equality check in every conformant client.
+    expect(p.issuer).toBe('https://id.bkey.id');
+    expect(p.issuer).toBe(BKEY_DEFAULT_ISSUER);
     // state (CSRF) alongside pkce + nonce.
     expect(p.checks).toEqual(['pkce', 'nonce', 'state']);
     expect(p.client.id_token_signed_response_alg).toBe('EdDSA');

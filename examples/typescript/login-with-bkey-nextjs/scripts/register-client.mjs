@@ -1,12 +1,14 @@
 // One-time self-serve registration (RFC 7591) — prints your .env values.
-// Usage: BKEY_ISSUER=https://staging-api.bkey.id APP_URL=http://localhost:3000 npm run register
+// Usage: APP_URL=http://localhost:3000 npm run register
+// Override the environment with BKEY_ISSUER=https://staging-api.bkey.id if you
+// are testing against staging with a staging-enrolled device.
 import { randomUUID } from 'node:crypto';
 import { registerClient } from '@bkey/login';
 
 // Same env var the app reads (auth.ts), so the issuer you register against
 // and the one the app authenticates against can never drift. ISSUER kept as
 // a back-compat alias.
-const issuer = process.env.BKEY_ISSUER ?? process.env.ISSUER ?? 'https://auth.bkey.id';
+const issuer = process.env.BKEY_ISSUER ?? process.env.ISSUER ?? 'https://id.bkey.id';
 const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
 const reg = await registerClient({
   issuer,
