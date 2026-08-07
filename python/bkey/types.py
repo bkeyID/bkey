@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -22,8 +22,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "Bearer"
     expires_in: int
-    refresh_token: Optional[str] = None
-    scope: Optional[str] = None
+    refresh_token: str | None = None
+    scope: str | None = None
 
 
 class CIBAResponse(BaseModel):
@@ -38,9 +38,9 @@ class CIBAResult(BaseModel):
     """Result of polling a CIBA approval."""
 
     status: str  # "approved", "denied", "pending", "expired"
-    access_token: Optional[str] = None
-    token_type: Optional[str] = None
-    expires_in: Optional[int] = None
+    access_token: str | None = None
+    token_type: str | None = None
+    expires_in: int | None = None
 
 
 class CheckoutItem(BaseModel):
@@ -56,7 +56,7 @@ class CheckoutResponse(BaseModel):
 
     id: str
     status: str
-    ciba_auth_req_id: Optional[str] = None
+    ciba_auth_req_id: str | None = None
 
 
 class CheckoutResult(BaseModel):
@@ -64,7 +64,7 @@ class CheckoutResult(BaseModel):
 
     id: str
     status: str  # "pending", "approved", "completed", "rejected", "expired"
-    payment_intent_id: Optional[str] = None
+    payment_intent_id: str | None = None
 
 
 class VaultStoreResponse(BaseModel):
@@ -79,7 +79,7 @@ class VaultAccessResponse(BaseModel):
 
     id: str
     status: str
-    ciba_auth_req_id: Optional[str] = None
+    ciba_auth_req_id: str | None = None
 
 
 class VaultResult(BaseModel):
@@ -87,4 +87,4 @@ class VaultResult(BaseModel):
 
     id: str
     status: str  # "pending", "approved", "denied", "expired"
-    data: Optional[Any] = None
+    data: Any | None = None

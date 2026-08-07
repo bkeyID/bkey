@@ -39,8 +39,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv run --with ruff ruff check bkey/
-      - run: uv run --with pytest pytest tests/ -v
+      # ruff/pytest come from the pinned `ci` dependency-group in
+      # python/pyproject.toml, resolved through uv.lock. They are NOT `--with`
+      # specs: a version inside a `run:` string is invisible to Dependabot, so it
+      # would silently rot. `--locked` fails if pyproject.toml and uv.lock drift.
+      - run: uv run --locked --group ci ruff check bkey/
+      - run: uv run --locked --group ci pytest tests/ -v
 
   yaml-lint:
     name: YAML — lint
@@ -82,7 +86,7 @@ jobs:
             "MD060": false
           }
           MLCFG
-          npx markdownlint-cli "**/*.md" \
+          npx markdownlint-cli@0.49.1 "**/*.md" \
             --ignore "**/node_modules/**" \
             --ignore "**/target/**" \
             --ignore "**/.pytest_cache/**" \
@@ -102,11 +106,11 @@ jobs:
           echo "All MDX files have frontmatter"
       - name: Mintlify build validation
         working-directory: docs
-        run: npx --yes mint@latest validate
+        run: npx --yes mint@4.2.783 validate
       - name: Mintlify broken-links check
         working-directory: docs
         run: |
-          output=$(npx --yes mint@latest broken-links 2>&1)
+          output=$(npx --yes mint@4.2.783 broken-links 2>&1)
           echo "$output"
           if echo "$output" | grep -q "found .* broken link"; then
             echo "::error::Mintlify detected broken links. Fix them or update docs.json."

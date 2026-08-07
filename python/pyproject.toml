@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -37,6 +36,16 @@ mcp = ["mcp>=1.0.0"]
 fastapi = ["fastapi>=0.100.0"]
 all = ["bkey-sdk[async,mcp,fastapi]"]
 
+[dependency-groups]
+# CI's lint/test toolchain. Pinned exactly, and declared here rather than inline
+# in the workflow so Dependabot can actually see and bump them — a version inside
+# a `run:` string is invisible to every dependency updater. PEP 735 groups are not
+# published in the wheel, so this does not affect installers of bkey-sdk.
+ci = [
+    "ruff==0.16.2",
+    "pytest==9.1.1",
+]
+
 [project.urls]
 Homepage = "https://bkey.id"
 Documentation = "https://bkey.id/docs"
@@ -50,5 +59,30 @@ packages = ["bkey"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py39"
+# Must match `requires-python` above. Was "py39", which contradicted
+# requires-python = ">=3.10" and made PEP 604 fixes look unsafe.
+target-version = "py310"
 line-length = 100
+
+[tool.ruff.lint]
+# Selected explicitly on purpose. Ruff's *default* rule set is not a stable
+# API — 0.16.0 grew it from 59 to 413 rules, which turned every open PR red
+# regardless of whether it touched Python. Pinning the selection here means a
+# ruff upgrade changes lint results only for rules we opted into.
+select = [
+    "E4",    # pycodestyle — imports
+    "E7",    # pycodestyle — statements
+    "E9",    # pycodestyle — runtime errors
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "BLE",   # flake8-blind-except
+    "PIE",   # flake8-pie
+    "YTT",   # flake8-2020
+    "ASYNC", # flake8-async
+]
+# Deliberately not selected: "S" (flake8-bandit). Its S105/S106 hardcoded-password
+# heuristic matches on identifier names, so it flags every OAuth field we have
+# (`token_type = "Bearer"`, `access_token=`, `client_secret=`) — ~20 false
+# positives and no true ones. Re-add only with those two rules ignored.
