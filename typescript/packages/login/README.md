@@ -15,14 +15,14 @@ npm install @bkey/login
 import { registerClient } from '@bkey/login';
 
 const { clientId, clientSecret } = await registerClient({
-  issuer: 'https://auth.bkey.id',
+  issuer: 'https://id.bkey.id',
   redirectUris: ['https://yourapp.com/auth/callback/bkey'],
   clientName: 'Your App',
 });
 // Store clientSecret like a password — it is shown exactly once.
 ```
 
-(Equivalent one-liner: `curl -X POST https://auth.bkey.id/oauth/register ...` —
+(Equivalent one-liner: `curl -X POST https://id.bkey.id/oauth/register ...` —
 RFC 7591. Zero-registration CIMD is also supported: host a client metadata
 document and use its URL as your `client_id`.)
 
@@ -51,7 +51,7 @@ Auth.js handles discovery, PKCE, nonce, and EdDSA id_token verification.
 import { createBkeyLogin } from '@bkey/login';
 
 const bkey = createBkeyLogin({
-  issuer: 'https://auth.bkey.id',
+  issuer: 'https://id.bkey.id',
   clientId: process.env.BKEY_CLIENT_ID!,
   clientSecret: process.env.BKEY_CLIENT_SECRET,
   redirectUri: 'https://yourapp.com/auth/callback/bkey',
@@ -83,6 +83,22 @@ and approves with their face. No password ever exists.
 
 The id_token carries exactly one identity claim: `sub`, a pseudonymous DID.
 Name/email are **not** shared — render your own profile UX on first login.
+
+## Environments
+
+| Environment | Issuer | Approve with |
+| --- | --- | --- |
+| Production (default) | `https://id.bkey.id` | the bkey app from the App Store |
+| Staging | `https://staging-api.bkey.id` | a staging-enrolled device |
+
+Register and authenticate against the **same** issuer — a client registered on one
+is unknown to the other. Pass `issuer` explicitly (or set `BKEY_ISSUER`) for staging;
+production is the default.
+
+> Use the issuer hosts above verbatim. `auth.bkey.id` also answers discovery, but the
+> document it returns declares `"issuer": "https://id.bkey.id"` — so configuring
+> `auth.bkey.id` fails the mandatory OIDC issuer-equality check (`issuer_mismatch`)
+> before sign-in can start.
 
 ## Related packages
 

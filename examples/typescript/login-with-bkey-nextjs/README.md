@@ -3,21 +3,30 @@
 Passwordless, biometric sign-in on a Next.js (App Router) site in ~5 lines,
 via [Auth.js](https://authjs.dev) + [`@bkey/login`](../../../typescript/packages/login).
 
+You will need the bkey app on your phone to approve the sign-in.
+
 ## Run it
 
 ```bash
+# 0. @bkey/login is not on npm yet, so build it from this repo first. This
+#    example depends on it by path (`file:../../../typescript/packages/login`),
+#    which will become `^0.1.0` once the package is published.
+(cd ../../../typescript && pnpm install && pnpm --filter @bkey/login build)
 npm install
 
 # 1. Get credentials — self-serve, no dashboard, no account (RFC 7591):
-BKEY_ISSUER=https://staging-api.bkey.id npm run register
+npm run register
 #    → paste ALL printed lines (BKEY_ISSUER / BKEY_CLIENT_ID / BKEY_CLIENT_SECRET /
 #      AUTH_SECRET) into .env.local. BKEY_ISSUER pins the app to the SAME issuer you
-#      registered against — without it the app defaults to production and would reject
-#      a staging-registered client.
+#      registered against, so the two can never drift.
 
 # 2. Go
 npm run dev   # http://localhost:3000 → "Sign in with bkey"
 ```
+
+This registers against production (`https://id.bkey.id`), which is what the App Store
+app is enrolled in. To use staging instead, prefix **both** commands with
+`BKEY_ISSUER=https://staging-api.bkey.id` — that needs a staging-enrolled device.
 
 The full integration is [`auth.ts`](./auth.ts) — `BkeyProvider` + your
 credentials. Auth.js handles discovery, PKCE, nonce, and EdDSA id_token
@@ -33,5 +42,9 @@ face → you're back, signed in. No password exists anywhere in this flow.
 
 - bkey shares exactly one claim: `sub` (a pseudonymous DID). Collect
   name/email in your own onboarding if you need them.
-- Requires a bkey environment with Login with bkey enabled
-  (`staging-api.bkey.id` during the beta).
+- Register and sign in against the **same** issuer — a client registered on
+  production is unknown to staging, and vice versa.
+- Use `id.bkey.id` (or `staging-api.bkey.id`) verbatim as the issuer. `auth.bkey.id`
+  answers discovery too, but the document it returns declares
+  `"issuer": "https://id.bkey.id"`, so pointing a client at it fails the mandatory
+  OIDC issuer-equality check (`issuer_mismatch`).

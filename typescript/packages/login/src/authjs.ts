@@ -26,7 +26,7 @@ export interface BkeyProviderOptions {
   clientId: string;
   /** Omit for public (PKCE-only) clients registered with auth method 'none'. */
   clientSecret?: string;
-  /** bkey issuer base. Default: https://auth.bkey.id */
+  /** bkey issuer base. Default: https://id.bkey.id */
   issuer?: string;
 }
 
@@ -46,7 +46,15 @@ export interface BkeyAuthjsProvider {
   style: { brandColor: string };
 }
 
-export const BKEY_DEFAULT_ISSUER = 'https://auth.bkey.id';
+// MUST be the host whose discovery document declares itself as the issuer, and
+// which signs the id_token `iss` claim — that is `id.bkey.id`. `auth.bkey.id`
+// also serves a discovery document, but that document declares
+// `"issuer": "https://id.bkey.id"`, so configuring `auth.bkey.id` fails the
+// mandatory OIDC Discovery §4.3 issuer-equality check in every conformant
+// client (Auth.js/oauth4webapi, and fetchDiscovery in ./client.ts) before a
+// single request reaches the authorization endpoint. Do not "simplify" this
+// back to the vanity hostname.
+export const BKEY_DEFAULT_ISSUER = 'https://id.bkey.id';
 
 export function BkeyProvider(options: BkeyProviderOptions): BkeyAuthjsProvider {
   return {

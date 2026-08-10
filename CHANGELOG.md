@@ -6,6 +6,20 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ---
 
+## `@bkey/login` 0.1.0 — unreleased
+
+Not yet published to npm. Build from source (`typescript/packages/login`) until the first release.
+
+### Fixed
+
+- **Default issuer corrected to `https://id.bkey.id`** (was `https://auth.bkey.id`). `auth.bkey.id` serves an OIDC discovery document that declares `"issuer": "https://id.bkey.id"`, so every conformant client — Auth.js/oauth4webapi and this package's own `fetchDiscovery` — rejected the old default with `issuer_mismatch` before sign-in could start. The out-of-the-box `BkeyProvider({ clientId, clientSecret })` was therefore unusable without an explicit `issuer` override. `BKEY_DEFAULT_ISSUER`, the `registerClient` example, the Next.js quickstart's register script, and all README/JSDoc snippets now use the self-consistent host.
+
+### Changed
+
+- **Quickstart defaults to production** (`https://id.bkey.id`) instead of `staging-api.bkey.id`. Login with bkey is enabled in production, and the App Store build of the bkey app is enrolled there — so the documented path now works with the app a developer already has. Staging remains available via `BKEY_ISSUER`, and both READMEs document the environment/issuer table plus the `auth.bkey.id` pitfall.
+
+---
+
 ## `@bkey/cli` 0.3.0 — 2026-04-19
 
 ### Breaking
