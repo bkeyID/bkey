@@ -15,10 +15,10 @@ from bkey.exceptions import (
 )
 from bkey.types import (
     BKeyConfig,
-    CIBAResponse,
-    CIBAResult,
     CheckoutResponse,
     CheckoutResult,
+    CIBAResponse,
+    CIBAResult,
     TokenResponse,
     VaultAccessResponse,
     VaultResult,
@@ -109,7 +109,10 @@ class BKeyClient:
                 body = resp.json()
                 msg = body.get("error", {}).get("message", resp.text)
                 err_type = body.get("error", {}).get("type")
-            except Exception:
+            except (ValueError, AttributeError):
+                # ValueError: body is not JSON (requests.JSONDecodeError subclasses it).
+                # AttributeError: body is JSON but not the shape we expect — notably the
+                # RFC 6749 form {"error": "invalid_grant"}, where "error" is a str.
                 msg = resp.text
                 err_type = None
             raise APIError(resp.status_code, msg, err_type)

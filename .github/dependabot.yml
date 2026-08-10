@@ -1,0 +1,39 @@
+version: 2
+
+# Keeps pinned toolchains moving on a schedule instead of on an upstream
+# vendor's release schedule. The point is that a ruff/pytest bump arrives as its
+# own reviewable PR that can go red on its own, rather than turning every
+# unrelated contributor PR red the morning after a release.
+updates:
+  # Python SDK + the pinned `ci` dependency-group (ruff, pytest).
+  - package-ecosystem: "uv"
+    directory: "/python"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-ci-tools:
+        patterns:
+          - "ruff"
+          - "pytest"
+
+  # GitHub Actions used across ci.yml, publish-npm.yml, publish-pypi.yml.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # TypeScript workspace (pnpm).
+  - package-ecosystem: "npm"
+    directory: "/typescript"
+    schedule:
+      interval: "weekly"
+
+  # Rust crate.
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "weekly"

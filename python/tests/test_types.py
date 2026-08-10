@@ -4,11 +4,11 @@ from decimal import Decimal
 
 from bkey.types import (
     BKeyConfig,
-    CIBAResponse,
-    CIBAResult,
     CheckoutItem,
     CheckoutResponse,
     CheckoutResult,
+    CIBAResponse,
+    CIBAResult,
     TokenResponse,
     VaultAccessResponse,
     VaultResult,

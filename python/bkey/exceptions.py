@@ -4,25 +4,17 @@
 class BKeyError(Exception):
     """Base exception for all BKey errors."""
 
-    pass
-
 
 class AuthenticationError(BKeyError):
     """Failed to authenticate with BKey API."""
-
-    pass
 
 
 class ApprovalDeniedError(BKeyError):
     """The user denied the approval request."""
 
-    pass
-
 
 class ApprovalTimeoutError(BKeyError):
     """The approval request timed out waiting for user action."""
-
-    pass
 
 
 class APIError(BKeyError):
