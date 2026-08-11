@@ -151,9 +151,8 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
  * console.log(user.sub); // the user's stable pseudonymous bkey ID
  * ```
  *
- * The id_token signature is verified against bkey's published JWKS (EdDSA by
- * default, RS256 for clients registered with it), plus issuer / audience /
- * nonce / expiry — all before any claim is returned.
+ * The id_token signature is verified against bkey's published JWKS (EdDSA),
+ * plus issuer / audience / nonce / expiry — all before any claim is returned.
  */
 export function createBkeyLogin(config: BkeyLoginConfig) {
   let discoveryPromise: Promise<BkeyDiscovery> | null = null;
@@ -238,9 +237,11 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
         audience: config.clientId,
         // Static known-safe allowlist, deliberately NOT derived from the
         // discovery document: a tampered doc must never be able to widen
-        // the accepted algorithms (downgrade vector). bkey signs EdDSA by
-        // default; RS256 for clients registered with it.
-        algorithms: ['EdDSA', 'RS256'],
+        // the accepted algorithms (downgrade vector). bkey signs EdDSA —
+        // exactly what every issuer advertises and the only key in its JWKS —
+        // so the allowlist is exactly that. Accepting an alg the IdP cannot
+        // produce widens the set for no reachable case.
+        algorithms: ['EdDSA'],
         // jose validates `exp`/`nbf` only when present; OIDC REQUIRES `exp`
         // (and `iat`) on an id_token, so require them explicitly — otherwise
         // a token minted without `exp` would verify and never expire.
