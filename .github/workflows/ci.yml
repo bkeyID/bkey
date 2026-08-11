@@ -14,11 +14,11 @@ jobs:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: pnpm
@@ -34,9 +34,9 @@ jobs:
       run:
         working-directory: python
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # ruff/pytest come from the pinned `ci` dependency-group in
@@ -50,7 +50,7 @@ jobs:
     name: YAML — lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ibiqlik/action-yamllint@v3
         with:
           file_or_dir: "docs/ .github/ typescript/pnpm-workspace.yaml"
@@ -67,8 +67,8 @@ jobs:
     name: Docs — markdown + MDX lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: Lint markdown and MDX
