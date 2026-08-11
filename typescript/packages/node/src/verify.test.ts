@@ -50,7 +50,7 @@ async function signToken(keys: TestKeys, opts: SignOpts = {}): Promise<string> {
 
   const jwt = new SignJWT(payload)
     .setProtectedHeader({ alg: opts.alg ?? 'EdDSA', kid: opts.kid ?? 'test-key-1' })
-    .setIssuer(opts.iss ?? 'https://api.bkey.id')
+    .setIssuer(opts.iss ?? 'https://id.bkey.id')
     .setIssuedAt();
 
   if (opts.aud) jwt.setAudience(opts.aud);
@@ -63,7 +63,7 @@ async function signToken(keys: TestKeys, opts: SignOpts = {}): Promise<string> {
 
 describe('verifyToken', () => {
   let keys: TestKeys;
-  const issuer = 'https://api.bkey.id';
+  const issuer = 'https://id.bkey.id';
 
   beforeAll(async () => {
     keys = await makeKeys();
@@ -78,6 +78,18 @@ describe('verifyToken', () => {
       expect(claims.sub).toBe('did:bkey:zAlice');
       expect(claims.iss).toBe(issuer);
       expect(claims.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    });
+
+    it('verifies a production-issuer token with no issuer option (default config)', async () => {
+      // Regression for #54: production mints iss=https://id.bkey.id, and the
+      // default must accept it. Every other test passes `issuer` explicitly,
+      // which is how a wrong DEFAULT_ISSUER survived the suite.
+      const token = await signToken(keys, { sub: 'did:bkey:zAlice' });
+
+      const claims = await verifyToken(token, { jwks: jwksFor(keys), scope: [] });
+
+      expect(claims.iss).toBe('https://id.bkey.id');
+      expect(claims.sub).toBe('did:bkey:zAlice');
     });
 
     it('derives scopes array from scope string', async () => {

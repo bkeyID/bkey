@@ -109,7 +109,7 @@ bkey approve "Delete user alice@corp" \
 import { verifyToken } from '@bkey/node';
 
 const claims = await verifyToken(result.accessToken, {
-  issuer: 'https://api.bkey.id',
+  issuer: 'https://id.bkey.id',
   scope: 'approve:action',
 });
 // claims.sub — verified DID of the approver

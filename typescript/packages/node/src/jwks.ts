@@ -79,7 +79,7 @@ export function createJwksFetcher(config: BKeyAdvancedVerifyConfig = {}): JWKSFe
     return createLocalJWKSet(config.jwks as unknown as Parameters<typeof createLocalJWKSet>[0]);
   }
 
-  const rawIssuer = config.issuer ?? 'https://api.bkey.id';
+  const rawIssuer = config.issuer ?? 'https://id.bkey.id';
   if (typeof rawIssuer !== 'string' || CONTROL_CHARS.test(rawIssuer)) {
     throw new BKeyAuthError('jwks_fetch_failed', 'issuer contains invalid characters');
   }

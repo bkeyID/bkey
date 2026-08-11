@@ -107,7 +107,7 @@ if (!approval.approved) {
 
 // THIS is the line that actually matters — don't skip it.
 const claims = await verifyToken(approval.accessToken, {
-  issuer: 'https://api.bkey.id',
+  issuer: 'https://id.bkey.id',
   scope: 'approve:deploy',
 });
 

@@ -6,7 +6,7 @@ import { createJwksFetcher, type JWKSFetcher } from './jwks.js';
 import type { BKeyAuthClaims, VerifyTokenOptions } from './types.js';
 import { BKeyAuthError } from './types.js';
 
-const DEFAULT_ISSUER = 'https://api.bkey.id';
+const DEFAULT_ISSUER = 'https://id.bkey.id';
 // Cap on raw token string length. JWTs of even 8 KB are very large; real
 // BKey tokens are ~500-1500 bytes. This is a DoS backstop.
 const MAX_TOKEN_LENGTH = 8192;
@@ -129,7 +129,7 @@ function validateOpts(opts: VerifyTokenOptions): void {
  *
  * try {
  *   const claims = await verifyToken(jwt, {
- *     issuer: 'https://api.bkey.id',
+ *     issuer: 'https://id.bkey.id',
  *     audience: 'https://my-app.example',
  *     scope: 'approve:payment',
  *   });

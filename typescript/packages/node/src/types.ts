@@ -6,7 +6,7 @@
 export interface BKeyVerifyConfig {
   /**
    * The BKey issuer URL. Used for JWKS discovery and `iss` claim check.
-   * @default "https://api.bkey.id"
+   * @default "https://id.bkey.id"
    */
   issuer?: string;
 
