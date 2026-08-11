@@ -13,6 +13,9 @@ const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
 const reg = await registerClient({
   issuer,
   redirectUris: [`${appUrl}/api/auth/callback/bkey`],
+  // Required for RP-initiated logout. This can only be set at registration
+  // time, so omitting it means re-registering later to enable sign-out.
+  postLogoutRedirectUris: [`${appUrl}/`],
   clientName: 'Login with bkey quickstart',
 });
 console.log('# add to .env.local (the secret is shown exactly once):');

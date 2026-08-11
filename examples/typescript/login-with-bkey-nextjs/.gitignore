@@ -1,0 +1,10 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Holds BKEY_CLIENT_SECRET and AUTH_SECRET.
+.env
+.env.local
+.env*.local
