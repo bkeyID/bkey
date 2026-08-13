@@ -49,17 +49,27 @@ export default async function Home({
           // Sign out of this app AND of bkey. Clearing only the local cookie
           // leaves the bkey session alive, so the next sign-in can complete
           // with no biometric prompt — see lib/bkey.ts.
+          // Build the bkey end-session URL first, but never let it prevent the
+          // local sign-out: discovery can fail, and endSessionUrl throws
+          // `end_session_unavailable` where the endpoint isn't advertised. If
+          // that threw here the action would abort and the user would not be
+          // signed out of this app either.
+          let redirectTo: string | undefined;
           const idToken = await getIdToken();
-          if (!idToken) {
+          if (idToken) {
+            try {
+              redirectTo = await bkeyEndSessionUrl(idToken);
+            } catch (err) {
+              console.warn('[bkey] end_session unavailable, signing out locally only:', err);
+            }
+          } else {
             console.warn(
               '[bkey] no id_token on the session — signing out locally only; ' +
                 'the bkey session stays active. Check APP_URL matches the origin ' +
                 'this app is served on.',
             );
           }
-          await signOut(
-            idToken ? { redirectTo: await bkeyEndSessionUrl(idToken) } : undefined,
-          );
+          await signOut(redirectTo ? { redirectTo } : undefined);
         }}
       >
         <button type="submit">Sign out</button>

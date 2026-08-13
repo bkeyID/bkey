@@ -38,9 +38,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Auth.js refuses off-origin redirects by default. Allow exactly one
     // external target — the bkey issuer — so sign-out can hand off to the
     // end_session endpoint. Everything else still falls back to this app.
+    //
+    // Compare ORIGINS, never string prefixes. `url.startsWith(baseUrl)` has no
+    // trailing delimiter, so `http://localhost:3000.evil.example/phish` would
+    // pass — an open redirect, and precisely the protection the Auth.js default
+    // provides. Widen that default by one origin; don't weaken it. Relative
+    // URLs are resolved against baseUrl first.
     redirect({ url, baseUrl }) {
-      if (url.startsWith(`${BKEY_ISSUER}/`)) return url;
-      return url.startsWith(baseUrl) ? url : baseUrl;
+      const appOrigin = new URL(baseUrl).origin;
+      let target: URL;
+      try {
+        target = new URL(url, baseUrl);
+      } catch {
+        return baseUrl;
+      }
+      if (target.origin === new URL(BKEY_ISSUER).origin) return target.toString();
+      return target.origin === appOrigin ? target.toString() : baseUrl;
     },
   },
 });
