@@ -70,8 +70,9 @@ export function BkeyProvider(options: BkeyProviderOptions): BkeyAuthjsProvider {
     // signed callback cookie (PR #32 review).
     checks: ['pkce', 'nonce', 'state'],
     idToken: true,
-    // bkey signs EdDSA by default; if your client was registered with RS256,
-    // pass issuer/client overrides accordingly. `token_endpoint_auth_method`
+    // bkey signs id_tokens with EdDSA — every issuer advertises exactly
+    // `["EdDSA"]` in `id_token_signing_alg_values_supported` and publishes a
+    // single Ed25519 JWKS key. `token_endpoint_auth_method`
     // MUST match how the client is registered and what the IdP supports:
     // confidential clients register `client_secret_post` (the only secret
     // method the bkey token endpoint accepts), while a PUBLIC client (no

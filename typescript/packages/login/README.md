@@ -70,8 +70,8 @@ res.redirect(await bkey.endSessionUrl({ idToken: user.idToken }));
 ```
 
 `handleCallback` verifies everything before returning: state (CSRF), PKCE,
-id_token signature against bkey's published JWKS (EdDSA default / RS256
-opt-in), issuer, audience, expiry, and nonce (replay).
+id_token signature against bkey's published JWKS (EdDSA), issuer, audience,
+expiry, and nonce (replay).
 
 ## What your users see
 

@@ -27,6 +27,11 @@ const REDIRECT = 'https://rp.example/auth/callback/bkey';
 let server: http.Server;
 let edPrivate: CryptoKey;
 let edJwk: JWK;
+// A second, RSA key the mock OP can sign with — used only to prove the SDK
+// refuses RS256 even when the discovery doc advertises it and the JWKS
+// carries a matching key (bkey#53).
+let rsaPrivate: CryptoKey;
+let rsaJwk: JWK;
 const opState: {
   nonce: string | null;
   lastCodeVerifier: string | null;
@@ -35,6 +40,7 @@ const opState: {
   aud: string;
   omitExp: boolean;
   offOriginToken: boolean;
+  signRs256: boolean;
 } = {
   nonce: null,
   lastCodeVerifier: null,
@@ -43,6 +49,7 @@ const opState: {
   aud: CLIENT_ID,
   omitExp: false,
   offOriginToken: false,
+  signRs256: false,
 };
 
 beforeAll(async () => {
@@ -53,6 +60,13 @@ beforeAll(async () => {
   edJwk.kid = await calculateJwkThumbprint(edJwk, 'sha256');
   edJwk.use = 'sig';
   edJwk.alg = 'EdDSA';
+
+  const rsaKp = await generateKeyPair('RS256', { extractable: true });
+  rsaPrivate = rsaKp.privateKey as CryptoKey;
+  rsaJwk = await exportJWK(rsaKp.publicKey);
+  rsaJwk.kid = await calculateJwkThumbprint(rsaJwk, 'sha256');
+  rsaJwk.use = 'sig';
+  rsaJwk.alg = 'RS256';
 
   server = http.createServer(async (req, res) => {
     const send = (status: number, obj: unknown) => {
@@ -73,10 +87,13 @@ beforeAll(async () => {
         jwks_uri: `${ISSUER}/oauth/jwks`,
         registration_endpoint: `${ISSUER}/oauth/register`,
         end_session_endpoint: `${ISSUER}/oauth/end_session`,
+        // Deliberately WIDER than bkey's real issuers (which advertise
+        // ["EdDSA"] only): the SDK's accepted-algorithm set is a static
+        // allowlist and must not be widened by whatever the doc claims.
         id_token_signing_alg_values_supported: ['EdDSA', 'RS256'],
       });
     }
-    if (url.pathname === '/oauth/jwks') return send(200, { keys: [edJwk] });
+    if (url.pathname === '/oauth/jwks') return send(200, { keys: [edJwk, rsaJwk] });
     if (url.pathname === '/oauth/register' && req.method === 'POST') {
       let body = '';
       for await (const chunk of req) body += chunk;
@@ -100,7 +117,11 @@ beforeAll(async () => {
         nonce: opState.tamperNonce ? 'evil-nonce' : opState.nonce,
         token_type: 'id',
       })
-        .setProtectedHeader({ alg: 'EdDSA', kid: edJwk.kid! })
+        .setProtectedHeader(
+          opState.signRs256
+            ? { alg: 'RS256', kid: rsaJwk.kid! }
+            : { alg: 'EdDSA', kid: edJwk.kid! },
+        )
         .setSubject('did:bkey:zLoginSdkUser')
         .setIssuer(ISSUER)
         .setAudience(opState.aud);
@@ -109,7 +130,7 @@ beforeAll(async () => {
       if (!opState.omitExp) {
         signer = signer.setIssuedAt().setExpirationTime('5m');
       }
-      const idToken = await signer.sign(edPrivate);
+      const idToken = await signer.sign(opState.signRs256 ? rsaPrivate : edPrivate);
       return send(200, {
         access_token: 'at_x',
         refresh_token: 'rt_x',
@@ -226,6 +247,23 @@ describe('handleCallback', () => {
     const cb = `${REDIRECT}?code=authcode_noexp&state=${encodeURIComponent(auth.state)}`;
     await expect(bkey.handleCallback(cb, auth)).rejects.toThrow();
     opState.omitExp = false;
+  });
+
+  it('rejects an RS256 id_token even when discovery advertises RS256 (bkey#53)', async () => {
+    // The signature is genuine and the key IS in the JWKS — only the algorithm
+    // is outside the allowlist. bkey issuers sign EdDSA and publish a single
+    // Ed25519 key, so anything else is either a tampered doc or an OP that is
+    // not bkey; neither is a token this SDK should accept.
+    const bkey = loginFor();
+    const auth = await bkey.authorizationUrl();
+    opState.nonce = auth.nonce;
+    opState.signRs256 = true;
+    try {
+      const cb = `${REDIRECT}?code=authcode_rs256&state=${encodeURIComponent(auth.state)}`;
+      await expect(bkey.handleCallback(cb, auth)).rejects.toThrow();
+    } finally {
+      opState.signRs256 = false;
+    }
   });
 
   it('surfaces OP errors from the callback', async () => {
