@@ -1,10 +1,11 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 export { verifyToken, extractBearerToken, _resetFetcherCache } from './verify.js';
-export { createJwksFetcher } from './jwks.js';
+export { createJwksFetcher, defaultJwksUrl } from './jwks.js';
 export type { JWKSFetcher } from './jwks.js';
 export {
   BKeyAuthError,
+  DEFAULT_ISSUER,
   type BKeyAuthClaims,
   type BKeyAuthErrorCode,
   type BKeyVerifyConfig,

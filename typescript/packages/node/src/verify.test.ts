@@ -3,7 +3,13 @@
 import { SignJWT, generateKeyPair, exportJWK, type KeyLike } from 'jose';
 import { describe, it, expect, beforeAll } from 'vitest';
 
-import { BKeyAuthError, extractBearerToken, verifyToken } from './index.js';
+import {
+  BKeyAuthError,
+  DEFAULT_ISSUER,
+  defaultJwksUrl,
+  extractBearerToken,
+  verifyToken,
+} from './index.js';
 
 // ─── Test harness: generate a keypair, mint real JWTs, pass JWKS inline ─
 
@@ -50,7 +56,7 @@ async function signToken(keys: TestKeys, opts: SignOpts = {}): Promise<string> {
 
   const jwt = new SignJWT(payload)
     .setProtectedHeader({ alg: opts.alg ?? 'EdDSA', kid: opts.kid ?? 'test-key-1' })
-    .setIssuer(opts.iss ?? 'https://id.bkey.id')
+    .setIssuer(opts.iss ?? DEFAULT_ISSUER)
     .setIssuedAt();
 
   if (opts.aud) jwt.setAudience(opts.aud);
@@ -63,7 +69,7 @@ async function signToken(keys: TestKeys, opts: SignOpts = {}): Promise<string> {
 
 describe('verifyToken', () => {
   let keys: TestKeys;
-  const issuer = 'https://id.bkey.id';
+  const issuer = DEFAULT_ISSUER;
 
   beforeAll(async () => {
     keys = await makeKeys();
@@ -88,7 +94,7 @@ describe('verifyToken', () => {
 
       const claims = await verifyToken(token, { jwks: jwksFor(keys), scope: [] });
 
-      expect(claims.iss).toBe('https://id.bkey.id');
+      expect(claims.iss).toBe(DEFAULT_ISSUER);
       expect(claims.sub).toBe('did:bkey:zAlice');
     });
 
@@ -182,7 +188,40 @@ describe('verifyToken', () => {
 
       await expect(
         verifyToken(token, { issuer, jwks: jwksFor(keys), scope: [] }),
-      ).rejects.toMatchObject({ code: 'invalid_issuer' });
+      ).rejects.toMatchObject({
+        code: 'invalid_issuer',
+        message: 'Token was issued by an unexpected issuer',
+      });
+    });
+
+    it('hints when configured issuer is the known-wrong api.bkey.id host', async () => {
+      const token = await signToken(keys, { iss: issuer });
+
+      await expect(
+        verifyToken(token, {
+          issuer: 'https://api.bkey.id',
+          jwks: jwksFor(keys),
+          scope: [],
+        }),
+      ).rejects.toMatchObject({
+        code: 'invalid_issuer',
+        message: expect.stringContaining(`pass issuer: "${DEFAULT_ISSUER}"`),
+      });
+    });
+
+    it('hints when configured issuer is the known-wrong auth.bkey.id host', async () => {
+      const token = await signToken(keys, { iss: issuer });
+
+      await expect(
+        verifyToken(token, {
+          issuer: 'https://auth.bkey.id/',
+          jwks: jwksFor(keys),
+          scope: [],
+        }),
+      ).rejects.toMatchObject({
+        code: 'invalid_issuer',
+        message: expect.stringMatching(/auth\.bkey\.id[\s\S]*id\.bkey\.id/),
+      });
     });
   });
 
@@ -452,6 +491,15 @@ describe('verifyToken', () => {
       await expect(
         verifyToken(token, { issuer, jwks: jwksFor(keys), scope: '' }),
       ).rejects.toMatchObject({ code: 'insufficient_scope' });
+    });
+
+    it('default JWKS URL is DEFAULT_ISSUER + /oauth/jwks', async () => {
+      // Pins the constructed default against the exported constant so a
+      // second, untested copy of the issuer cannot drift (review #56).
+      expect(defaultJwksUrl()).toBe(`${DEFAULT_ISSUER}/oauth/jwks`);
+      expect(defaultJwksUrl()).toBe('https://id.bkey.id/oauth/jwks');
+      const { createJwksFetcher } = await import('./jwks.js');
+      expect(() => createJwksFetcher({})).not.toThrow();
     });
 
     it('rejects invalid jwksCacheMaxAge', async () => {

@@ -143,13 +143,15 @@ header:  { "alg": "EdDSA", "kid": "<key id>", "typ": "JWT" }
 payload: {
   "iss": "https://id.bkey.id",
   "sub": "did:bkey:...",
-  "aud": "your-client-id",
+  "aud": "https://api.bkey.id",
   "scope": "approve:deploy",
   "jti": "<unique>",
   "iat": ..., "exp": ...
 }
 signature: Ed25519(header || "." || payload)
 ```
+
+Access and refresh tokens have `aud` set to the BKey API (`https://api.bkey.id`). Only id_tokens set `aud` to your `client_id`.
 
 Verify with any JWKS-aware JWT library or `@bkey/node`'s `verifyToken()`.
 
