@@ -30,7 +30,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "fastify-plugin": "^5.1.0",
+    "fastify-plugin": "^6.0.0",
     "jose": "~5.9.0"
   },
   "peerDependencies": {
