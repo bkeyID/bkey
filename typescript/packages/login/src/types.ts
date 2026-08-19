@@ -3,6 +3,7 @@ export interface BkeyDiscovery {
   issuer: string;
   authorization_endpoint: string;
   token_endpoint: string;
+  revocation_endpoint?: string;
   jwks_uri: string;
   registration_endpoint?: string;
   end_session_endpoint?: string;

@@ -71,6 +71,9 @@ async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
   // document's self-declared `issuer`, not the individual endpoint URLs.
   assertSameOrigin(issuer, doc.authorization_endpoint, 'authorization_endpoint');
   assertSameOrigin(issuer, doc.token_endpoint, 'token_endpoint');
+  if (doc.revocation_endpoint) {
+    assertSameOrigin(issuer, doc.revocation_endpoint, 'revocation_endpoint');
+  }
   assertSameOrigin(issuer, doc.jwks_uri, 'jwks_uri');
   if (doc.registration_endpoint) {
     assertSameOrigin(issuer, doc.registration_endpoint, 'registration_endpoint');
@@ -168,6 +171,43 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
     return jwksCache;
   };
 
+  const revokeToken = async (
+    token: string,
+    tokenTypeHint: 'access_token' | 'refresh_token',
+  ): Promise<void> => {
+    const doc = await discovery();
+    if (!doc.revocation_endpoint) {
+      throw new BkeyLoginError(
+        'revocation_unavailable',
+        'this bkey environment does not advertise a revocation_endpoint',
+      );
+    }
+    const endpoint = assertSameOrigin(
+      config.issuer,
+      doc.revocation_endpoint,
+      'revocation_endpoint',
+    );
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      // Do not let a same-origin endpoint forward the token or client secret.
+      redirect: 'error',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        token,
+        token_type_hint: tokenTypeHint,
+        client_id: config.clientId,
+        ...(config.clientSecret ? { client_secret: config.clientSecret } : {}),
+      }).toString(),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new BkeyLoginError(
+        String(body.error ?? 'token_revocation_failed'),
+        String(body.error_description ?? `token revocation failed: HTTP ${res.status}`),
+      );
+    }
+  };
+
   return {
     /** Build the sign-in redirect. Persist state/nonce/codeVerifier until the callback. */
     async authorizationUrl(opts: { scope?: string } = {}): Promise<AuthorizationRequest> {
@@ -263,6 +303,16 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
         accessToken: tokens.access_token ? String(tokens.access_token) : undefined,
         refreshToken: tokens.refresh_token ? String(tokens.refresh_token) : undefined,
       };
+    },
+
+    /** Revoke an access token through the RFC 7009 endpoint. */
+    async revokeAccessToken(token: string): Promise<void> {
+      return revokeToken(token, 'access_token');
+    },
+
+    /** Revoke a refresh token through the RFC 7009 endpoint. */
+    async revokeRefreshToken(token: string): Promise<void> {
+      return revokeToken(token, 'refresh_token');
     },
 
     /** OIDC RP-Initiated Logout URL (redirect the browser here to sign out). */

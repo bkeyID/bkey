@@ -36,6 +36,24 @@ Most OIDC libraries auto-configure from this URL. See the [OIDC discovery endpoi
 | [`POST /oauth/device/code`](/api-reference/oauth/device-authorization) | Device authorization (for humans on CLIs) |
 | [`GET /userinfo`](/api-reference/oauth/get-userinfo) | OIDC UserInfo |
 
+#### Revoke tokens with `@bkey/login`
+
+The Login with BKey SDK reads the revocation endpoint from OIDC discovery and
+sends the RFC 7009 request for you:
+
+```ts
+if (user.accessToken) {
+  await bkey.revokeAccessToken(user.accessToken);
+}
+
+if (user.refreshToken) {
+  await bkey.revokeRefreshToken(user.refreshToken);
+}
+```
+
+The SDK sends the correct token type hint and client authentication fields.
+You do not need to make a separate `fetch()` call.
+
 ### Per-action biometric approval (CIBA)
 
 | Endpoint | Purpose |

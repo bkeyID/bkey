@@ -41,6 +41,8 @@ const opState: {
   omitExp: boolean;
   offOriginToken: boolean;
   signRs256: boolean;
+  lastRevocation: URLSearchParams | null;
+  rejectRevocation: boolean;
 } = {
   nonce: null,
   lastCodeVerifier: null,
@@ -50,6 +52,8 @@ const opState: {
   omitExp: false,
   offOriginToken: false,
   signRs256: false,
+  lastRevocation: null,
+  rejectRevocation: false,
 };
 
 beforeAll(async () => {
@@ -84,6 +88,7 @@ beforeAll(async () => {
         token_endpoint: opState.offOriginToken
           ? 'https://evil.example.com/oauth/token'
           : `${ISSUER}/oauth/token`,
+        revocation_endpoint: `${ISSUER}/oauth/revoke`,
         jwks_uri: `${ISSUER}/oauth/jwks`,
         registration_endpoint: `${ISSUER}/oauth/register`,
         end_session_endpoint: `${ISSUER}/oauth/end_session`,
@@ -139,6 +144,19 @@ beforeAll(async () => {
         id_token: idToken,
         scope: 'openid',
       });
+    }
+    if (url.pathname === '/oauth/revoke' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      opState.lastRevocation = new URLSearchParams(body);
+      if (opState.rejectRevocation) {
+        return send(401, {
+          error: 'invalid_client',
+          error_description: 'client authentication failed',
+        });
+      }
+      res.statusCode = 200;
+      return res.end();
     }
     send(404, { error: 'not_found' });
   });
@@ -303,6 +321,31 @@ describe('endSessionUrl', () => {
     expect(url.searchParams.get('id_token_hint')).toBe('a.b.c');
     expect(url.searchParams.get('post_logout_redirect_uri')).toBe('https://rp.example/bye');
     expect(url.searchParams.get('state')).toBe('s1');
+  });
+});
+
+describe('token revocation (RFC 7009)', () => {
+  it('revokes a refresh token with confidential-client authentication', async () => {
+    await loginFor().revokeRefreshToken('rt_x');
+
+    expect(opState.lastRevocation?.get('token')).toBe('rt_x');
+    expect(opState.lastRevocation?.get('token_type_hint')).toBe('refresh_token');
+    expect(opState.lastRevocation?.get('client_id')).toBe(CLIENT_ID);
+    expect(opState.lastRevocation?.get('client_secret')).toBe('secret');
+  });
+
+  it('supports public clients and reports OAuth errors', async () => {
+    opState.rejectRevocation = true;
+    try {
+      await expect(
+        loginFor({ clientSecret: undefined }).revokeAccessToken('at_x'),
+      ).rejects.toMatchObject({ code: 'invalid_client' });
+      expect(opState.lastRevocation?.get('client_id')).toBe(CLIENT_ID);
+      expect(opState.lastRevocation?.has('client_secret')).toBe(false);
+      expect(opState.lastRevocation?.get('token_type_hint')).toBe('access_token');
+    } finally {
+      opState.rejectRevocation = false;
+    }
   });
 });
 

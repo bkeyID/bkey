@@ -65,6 +65,14 @@ res.redirect(auth.url);
 const user = await bkey.handleCallback(req.url, savedAuth);
 console.log(user.sub); // 'did:bkey:z...' — the user's stable bkey ID
 
+// Revoke a token (RFC 7009):
+if (user.accessToken) {
+  await bkey.revokeAccessToken(user.accessToken);
+}
+if (user.refreshToken) {
+  await bkey.revokeRefreshToken(user.refreshToken);
+}
+
 // Sign out (OIDC RP-Initiated Logout):
 res.redirect(await bkey.endSessionUrl({ idToken: user.idToken }));
 ```

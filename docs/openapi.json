@@ -304,20 +304,66 @@
         "tags": [
           "OAuth"
         ],
-        "description": "RFC 7009 token revocation. Revokes an access or refresh token. Always returns 200 (per spec) even if the token is unknown, to prevent token enumeration.",
-        "responses": {
-          "200": {
-            "description": "Empty body (RFC 7009)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": false,
-                  "description": "Empty body (RFC 7009)"
+        "description": "RFC 7009 token revocation. Revokes an access or refresh token. Public clients send client_id. Confidential clients authenticate with client_id and client_secret in the form body (client_secret_post). Always returns 200 (per spec) even if the token is unknown, to prevent token enumeration.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "Access or refresh token to revoke"
+                  },
+                  "token_type_hint": {
+                    "type": "string",
+                    "enum": [
+                      "access_token",
+                      "refresh_token"
+                    ],
+                    "description": "Optional hint that identifies the token type"
+                  },
+                  "client_id": {
+                    "type": "string",
+                    "description": "OAuth client identifier"
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "description": "Required for confidential clients and omitted by public clients"
+                  }
+                },
+                "required": [
+                  "token",
+                  "client_id"
+                ],
+                "additionalProperties": false
+              },
+              "examples": {
+                "publicClient": {
+                  "summary": "Public client",
+                  "value": {
+                    "token": "rt_example",
+                    "token_type_hint": "refresh_token",
+                    "client_id": "bkey_client_example"
+                  }
+                },
+                "confidentialClient": {
+                  "summary": "Confidential client",
+                  "value": {
+                    "token": "rt_example",
+                    "token_type_hint": "refresh_token",
+                    "client_id": "bkey_client_example",
+                    "client_secret": "bkey_secret_example"
+                  }
                 }
               }
             }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Empty body (RFC 7009)"
           },
           "400": {
             "description": "Default Response",
