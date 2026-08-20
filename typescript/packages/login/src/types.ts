@@ -3,6 +3,7 @@ export interface BkeyDiscovery {
   issuer: string;
   authorization_endpoint: string;
   token_endpoint: string;
+  revocation_endpoint?: string;
   jwks_uri: string;
   registration_endpoint?: string;
   end_session_endpoint?: string;
@@ -53,6 +54,11 @@ export interface AuthorizationRequest {
   state: string;
   nonce: string;
   codeVerifier: string;
+}
+
+export interface RevokeTokenOptions {
+  /** Cancel the full operation sooner. The 5-second deadline remains active. */
+  signal?: AbortSignal;
 }
 
 export interface LoginResult {

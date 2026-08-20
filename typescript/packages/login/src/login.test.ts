@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import {
@@ -41,6 +41,10 @@ const opState: {
   omitExp: boolean;
   offOriginToken: boolean;
   signRs256: boolean;
+  lastRevocation: URLSearchParams | null;
+  rejectRevocation: boolean;
+  hangDiscovery: boolean;
+  hangRevocation: boolean;
 } = {
   nonce: null,
   lastCodeVerifier: null,
@@ -50,6 +54,10 @@ const opState: {
   omitExp: false,
   offOriginToken: false,
   signRs256: false,
+  lastRevocation: null,
+  rejectRevocation: false,
+  hangDiscovery: false,
+  hangRevocation: false,
 };
 
 beforeAll(async () => {
@@ -76,6 +84,7 @@ beforeAll(async () => {
     };
     const url = new URL(req.url!, ISSUER);
     if (url.pathname === '/.well-known/openid-configuration') {
+      if (opState.hangDiscovery) return;
       return send(200, {
         issuer: ISSUER,
         authorization_endpoint: `${ISSUER}/oauth/authorize`,
@@ -84,6 +93,7 @@ beforeAll(async () => {
         token_endpoint: opState.offOriginToken
           ? 'https://evil.example.com/oauth/token'
           : `${ISSUER}/oauth/token`,
+        revocation_endpoint: `${ISSUER}/oauth/revoke`,
         jwks_uri: `${ISSUER}/oauth/jwks`,
         registration_endpoint: `${ISSUER}/oauth/register`,
         end_session_endpoint: `${ISSUER}/oauth/end_session`,
@@ -140,6 +150,20 @@ beforeAll(async () => {
         scope: 'openid',
       });
     }
+    if (url.pathname === '/oauth/revoke' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      opState.lastRevocation = new URLSearchParams(body);
+      if (opState.hangRevocation) return;
+      if (opState.rejectRevocation) {
+        return send(401, {
+          error: 'invalid_client',
+          error_description: 'client authentication failed',
+        });
+      }
+      res.statusCode = 200;
+      return res.end();
+    }
     send(404, { error: 'not_found' });
   });
   await new Promise<void>((r) => server.listen(PORT, r));
@@ -189,6 +213,34 @@ describe('authorizationUrl', () => {
     expect(url.searchParams.get('code_challenge')).toBe(expectedChallenge);
     expect(url.searchParams.get('state')).toBe(auth.state);
     expect(url.searchParams.get('nonce')).toBe(auth.nonce);
+  });
+
+  it('rejects a non-HTTPS revocation endpoint outside loopback', async () => {
+    const issuer = 'https://id.example.com';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/oauth/authorize`,
+          token_endpoint: `${issuer}/oauth/token`,
+          revocation_endpoint: 'http://id.example.com/oauth/revoke',
+          jwks_uri: `${issuer}/oauth/jwks`,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    try {
+      await expect(
+        createBkeyLogin({
+          issuer,
+          clientId: CLIENT_ID,
+          clientSecret: 'secret',
+          redirectUri: REDIRECT,
+        }).authorizationUrl(),
+      ).rejects.toMatchObject({ code: 'discovery_endpoint_insecure' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 
@@ -303,6 +355,71 @@ describe('endSessionUrl', () => {
     expect(url.searchParams.get('id_token_hint')).toBe('a.b.c');
     expect(url.searchParams.get('post_logout_redirect_uri')).toBe('https://rp.example/bye');
     expect(url.searchParams.get('state')).toBe('s1');
+  });
+});
+
+describe('token revocation (RFC 7009)', () => {
+  it('revokes a refresh token with confidential-client authentication', async () => {
+    await loginFor().revokeRefreshToken('rt_x');
+
+    expect(opState.lastRevocation?.get('token')).toBe('rt_x');
+    expect(opState.lastRevocation?.get('token_type_hint')).toBe('refresh_token');
+    expect(opState.lastRevocation?.get('client_id')).toBe(CLIENT_ID);
+    expect(opState.lastRevocation?.get('client_secret')).toBe('secret');
+  });
+
+  it('supports public clients and reports OAuth errors', async () => {
+    opState.rejectRevocation = true;
+    try {
+      await expect(
+        loginFor({ clientSecret: undefined }).revokeAccessToken('at_x'),
+      ).rejects.toMatchObject({ code: 'invalid_client' });
+      expect(opState.lastRevocation?.get('client_id')).toBe(CLIENT_ID);
+      expect(opState.lastRevocation?.has('client_secret')).toBe(false);
+      expect(opState.lastRevocation?.get('token_type_hint')).toBe('access_token');
+    } finally {
+      opState.rejectRevocation = false;
+    }
+  });
+
+  it('accepts an AbortSignal for a stalled revocation request', async () => {
+    opState.hangRevocation = true;
+    try {
+      await expect(
+        loginFor().revokeAccessToken('at_x', { signal: AbortSignal.timeout(25) }),
+      ).rejects.toThrow();
+    } finally {
+      opState.hangRevocation = false;
+    }
+  });
+
+  it('applies an already-aborted caller signal before fresh-client discovery', async () => {
+    opState.hangDiscovery = true;
+    const controller = new AbortController();
+    controller.abort();
+    try {
+      await expect(
+        loginFor().revokeAccessToken('at_x', { signal: controller.signal }),
+      ).rejects.toThrow();
+    } finally {
+      opState.hangDiscovery = false;
+    }
+  });
+
+  it('keeps the default deadline when the caller signal does not fire', async () => {
+    opState.hangDiscovery = true;
+    const shortDeadline = AbortSignal.timeout(25);
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(shortDeadline);
+    const caller = new AbortController();
+    try {
+      await expect(
+        loginFor().revokeAccessToken('at_x', { signal: caller.signal }),
+      ).rejects.toThrow();
+      expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+    } finally {
+      timeoutSpy.mockRestore();
+      opState.hangDiscovery = false;
+    }
   });
 });
 

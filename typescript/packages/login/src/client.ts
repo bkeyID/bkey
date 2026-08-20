@@ -6,11 +6,13 @@ import {
   type BkeyDiscovery,
   type BkeyLoginConfig,
   type LoginResult,
+  type RevokeTokenOptions,
   type RegisterClientOptions,
   type RegisteredClient,
 } from './types.js';
 
 const DISCOVERY_PATH = '/.well-known/openid-configuration';
+const REVOCATION_TIMEOUT_MS = 5_000;
 
 function b64url(buf: Buffer): string {
   return buf.toString('base64url');
@@ -23,15 +25,36 @@ function safeEqual(a: string, b: string): boolean {
   return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
+/** True for loopback names and the full IPv4 127.0.0.0/8 loopback block. */
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (normalized === 'localhost' || normalized === '::1') return true;
+  const octets = normalized.split('.');
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255) &&
+    octets[0] === '127'
+  );
+}
+
 /**
- * Endpoints taken from the discovery document must live on the configured
- * issuer's origin. The issuer-equality check pins the document; this pins
- * every URL we subsequently fetch from it (jwks_uri, registration_endpoint),
- * so a tampered document can never redirect key material or registration
- * traffic off-origin (codex review).
+ * Endpoints taken from discovery must use HTTPS and live on the configured
+ * issuer's origin. Plain HTTP is permitted only on a loopback host for local
+ * development. This prevents credential exposure through a tampered or
+ * insecure discovery document.
  */
-function assertSameOrigin(issuer: string, url: string, what: string): string {
-  if (new URL(url).origin !== new URL(issuer).origin) {
+function assertSecureSameOrigin(issuer: string, url: string, what: string): string {
+  const endpoint = new URL(url);
+  if (
+    endpoint.protocol !== 'https:' &&
+    !(endpoint.protocol === 'http:' && isLoopbackHostname(endpoint.hostname))
+  ) {
+    throw new BkeyLoginError(
+      'discovery_endpoint_insecure',
+      `${what} (${url}) must use HTTPS (HTTP is allowed only for loopback development)`,
+    );
+  }
+  if (endpoint.origin !== new URL(issuer).origin) {
     throw new BkeyLoginError(
       'discovery_endpoint_off_origin',
       `${what} (${url}) is not on the issuer origin (${issuer})`,
@@ -40,8 +63,9 @@ function assertSameOrigin(issuer: string, url: string, what: string): string {
   return url;
 }
 
-async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
+async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<BkeyDiscovery> {
   const res = await fetch(`${issuer.replace(/\/$/, '')}${DISCOVERY_PATH}`, {
+    signal,
     headers: { accept: 'application/json' },
   });
   if (!res.ok) {
@@ -69,14 +93,17 @@ async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
   // on the token endpoint especially) to an attacker host advertised by a
   // tampered discovery document. The issuer-equality check above only pins the
   // document's self-declared `issuer`, not the individual endpoint URLs.
-  assertSameOrigin(issuer, doc.authorization_endpoint, 'authorization_endpoint');
-  assertSameOrigin(issuer, doc.token_endpoint, 'token_endpoint');
-  assertSameOrigin(issuer, doc.jwks_uri, 'jwks_uri');
+  assertSecureSameOrigin(issuer, doc.authorization_endpoint, 'authorization_endpoint');
+  assertSecureSameOrigin(issuer, doc.token_endpoint, 'token_endpoint');
+  if (doc.revocation_endpoint) {
+    assertSecureSameOrigin(issuer, doc.revocation_endpoint, 'revocation_endpoint');
+  }
+  assertSecureSameOrigin(issuer, doc.jwks_uri, 'jwks_uri');
   if (doc.registration_endpoint) {
-    assertSameOrigin(issuer, doc.registration_endpoint, 'registration_endpoint');
+    assertSecureSameOrigin(issuer, doc.registration_endpoint, 'registration_endpoint');
   }
   if (doc.end_session_endpoint) {
-    assertSameOrigin(issuer, doc.end_session_endpoint, 'end_session_endpoint');
+    assertSecureSameOrigin(issuer, doc.end_session_endpoint, 'end_session_endpoint');
   }
   return doc;
 }
@@ -102,7 +129,7 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
       'this bkey environment does not advertise a registration_endpoint',
     );
   }
-  assertSameOrigin(opts.issuer, discovery.registration_endpoint, 'registration_endpoint');
+  assertSecureSameOrigin(opts.issuer, discovery.registration_endpoint, 'registration_endpoint');
   const res = await fetch(discovery.registration_endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -155,17 +182,90 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
  * plus issuer / audience / nonce / expiry — all before any claim is returned.
  */
 export function createBkeyLogin(config: BkeyLoginConfig) {
+  let discoveryDocument: BkeyDiscovery | null = null;
   let discoveryPromise: Promise<BkeyDiscovery> | null = null;
   let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
 
-  const discovery = () => (discoveryPromise ??= fetchDiscovery(config.issuer));
+  const discovery = (signal?: AbortSignal): Promise<BkeyDiscovery> => {
+    if (discoveryDocument) return Promise.resolve(discoveryDocument);
+
+    // A signal-specific operation must control its own discovery request. Do
+    // not attach it to an unbounded discovery request that another operation
+    // might already have started.
+    if (signal) {
+      return fetchDiscovery(config.issuer, signal).then((doc) => {
+        discoveryDocument = doc;
+        return doc;
+      });
+    }
+
+    if (!discoveryPromise) {
+      discoveryPromise = fetchDiscovery(config.issuer).then(
+        (doc) => {
+          discoveryDocument = doc;
+          discoveryPromise = null;
+          return doc;
+        },
+        (error: unknown) => {
+          discoveryPromise = null;
+          throw error;
+        },
+      );
+    }
+    return discoveryPromise;
+  };
   const jwks = async () => {
     if (!jwksCache) {
       const doc = await discovery();
-      assertSameOrigin(config.issuer, doc.jwks_uri, 'jwks_uri');
+      assertSecureSameOrigin(config.issuer, doc.jwks_uri, 'jwks_uri');
       jwksCache = createRemoteJWKSet(new URL(doc.jwks_uri));
     }
     return jwksCache;
+  };
+
+  const revokeToken = async (
+    token: string,
+    tokenTypeHint: 'access_token' | 'refresh_token',
+    opts: RevokeTokenOptions = {},
+  ): Promise<void> => {
+    // Start one deadline at method entry and compose it with caller
+    // cancellation. The same signal bounds discovery and the revocation POST.
+    const deadlineSignal = AbortSignal.timeout(REVOCATION_TIMEOUT_MS);
+    const signal = opts.signal
+      ? AbortSignal.any([opts.signal, deadlineSignal])
+      : deadlineSignal;
+    const doc = await discovery(signal);
+    if (!doc.revocation_endpoint) {
+      throw new BkeyLoginError(
+        'revocation_unavailable',
+        'this bkey environment does not advertise a revocation_endpoint',
+      );
+    }
+    const endpoint = assertSecureSameOrigin(
+      config.issuer,
+      doc.revocation_endpoint,
+      'revocation_endpoint',
+    );
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      // Do not let a same-origin endpoint forward the token or client secret.
+      redirect: 'error',
+      signal,
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        token,
+        token_type_hint: tokenTypeHint,
+        client_id: config.clientId,
+        ...(config.clientSecret ? { client_secret: config.clientSecret } : {}),
+      }).toString(),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new BkeyLoginError(
+        String(body.error ?? 'token_revocation_failed'),
+        String(body.error_description ?? `token revocation failed: HTTP ${res.status}`),
+      );
+    }
   };
 
   return {
@@ -263,6 +363,16 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
         accessToken: tokens.access_token ? String(tokens.access_token) : undefined,
         refreshToken: tokens.refresh_token ? String(tokens.refresh_token) : undefined,
       };
+    },
+
+    /** Revoke only this access token. The full operation has a 5-second deadline. */
+    async revokeAccessToken(token: string, opts: RevokeTokenOptions = {}): Promise<void> {
+      return revokeToken(token, 'access_token', opts);
+    },
+
+    /** Revoke only this refresh token. The full operation has a 5-second deadline. */
+    async revokeRefreshToken(token: string, opts: RevokeTokenOptions = {}): Promise<void> {
+      return revokeToken(token, 'refresh_token', opts);
     },
 
     /** OIDC RP-Initiated Logout URL (redirect the browser here to sign out). */

@@ -6,6 +6,7 @@ export type {
   BkeyDiscovery,
   BkeyLoginConfig,
   LoginResult,
+  RevokeTokenOptions,
   RegisterClientOptions,
   RegisteredClient,
 } from './types.js';

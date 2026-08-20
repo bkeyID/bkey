@@ -65,9 +65,23 @@ res.redirect(auth.url);
 const user = await bkey.handleCallback(req.url, savedAuth);
 console.log(user.sub); // 'did:bkey:z...' — the user's stable bkey ID
 
+// Revoke a token (RFC 7009):
+if (user.accessToken) {
+  await bkey.revokeAccessToken(user.accessToken);
+}
+if (user.refreshToken) {
+  await bkey.revokeRefreshToken(user.refreshToken);
+}
+
 // Sign out (OIDC RP-Initiated Logout):
 res.redirect(await bkey.endSessionUrl({ idToken: user.idToken }));
 ```
+
+Revocation applies only to the submitted token. Revoking a refresh token does
+not revoke related access tokens. Revoke both tokens to end both credentials.
+The full revocation operation, including discovery, has a five-second deadline.
+Pass `{ signal }` as the second argument to cancel it sooner. A caller signal
+does not disable the default deadline.
 
 `handleCallback` verifies everything before returning: state (CSRF), PKCE,
 id_token signature against bkey's published JWKS (EdDSA), issuer, audience,
