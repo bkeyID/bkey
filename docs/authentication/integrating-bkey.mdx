@@ -52,7 +52,10 @@ if (user.refreshToken) {
 ```
 
 The SDK sends the correct token type hint and client authentication fields.
-You do not need to make a separate `fetch()` call.
+You do not need to make a separate `fetch()` call. Revocation applies only to
+the submitted token. Revoking a refresh token does not revoke related access
+tokens, so revoke both tokens to end both credentials. Each SDK request times
+out after five seconds by default and accepts an optional `AbortSignal`.
 
 ### Per-action biometric approval (CIBA)
 

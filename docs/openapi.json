@@ -304,7 +304,8 @@
         "tags": [
           "OAuth"
         ],
-        "description": "RFC 7009 token revocation. Revokes an access or refresh token. Public clients send client_id. Confidential clients authenticate with client_id and client_secret in the form body (client_secret_post). Always returns 200 (per spec) even if the token is unknown, to prevent token enumeration.",
+        "security": [],
+        "description": "RFC 7009 token revocation. Revocation applies only to the submitted token: revoking a refresh token does not revoke related access tokens, so callers must revoke both tokens to end both credentials. Public clients send client_id. Confidential clients authenticate with client_id and client_secret in the form body (client_secret_post). For a valid client and well-formed request, returns 200 even if the token is unknown, to prevent token enumeration.",
         "requestBody": {
           "required": true,
           "content": {
@@ -375,6 +376,33 @@
                     "error": {
                       "type": "string",
                       "description": "Error code (e.g., invalid_grant, unauthorized_client)"
+                    },
+                    "error_description": {
+                      "type": "string"
+                    },
+                    "error_uri": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "invalid_client / unauthorized_client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Error code (e.g., invalid_client, unauthorized_client)"
                     },
                     "error_description": {
                       "type": "string"

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import {
@@ -43,6 +43,7 @@ const opState: {
   signRs256: boolean;
   lastRevocation: URLSearchParams | null;
   rejectRevocation: boolean;
+  hangRevocation: boolean;
 } = {
   nonce: null,
   lastCodeVerifier: null,
@@ -54,6 +55,7 @@ const opState: {
   signRs256: false,
   lastRevocation: null,
   rejectRevocation: false,
+  hangRevocation: false,
 };
 
 beforeAll(async () => {
@@ -149,6 +151,7 @@ beforeAll(async () => {
       let body = '';
       for await (const chunk of req) body += chunk;
       opState.lastRevocation = new URLSearchParams(body);
+      if (opState.hangRevocation) return;
       if (opState.rejectRevocation) {
         return send(401, {
           error: 'invalid_client',
@@ -207,6 +210,34 @@ describe('authorizationUrl', () => {
     expect(url.searchParams.get('code_challenge')).toBe(expectedChallenge);
     expect(url.searchParams.get('state')).toBe(auth.state);
     expect(url.searchParams.get('nonce')).toBe(auth.nonce);
+  });
+
+  it('rejects a non-HTTPS revocation endpoint outside loopback', async () => {
+    const issuer = 'https://id.example.com';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/oauth/authorize`,
+          token_endpoint: `${issuer}/oauth/token`,
+          revocation_endpoint: 'http://id.example.com/oauth/revoke',
+          jwks_uri: `${issuer}/oauth/jwks`,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    try {
+      await expect(
+        createBkeyLogin({
+          issuer,
+          clientId: CLIENT_ID,
+          clientSecret: 'secret',
+          redirectUri: REDIRECT,
+        }).authorizationUrl(),
+      ).rejects.toMatchObject({ code: 'discovery_endpoint_insecure' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 
@@ -345,6 +376,17 @@ describe('token revocation (RFC 7009)', () => {
       expect(opState.lastRevocation?.get('token_type_hint')).toBe('access_token');
     } finally {
       opState.rejectRevocation = false;
+    }
+  });
+
+  it('accepts an AbortSignal for a stalled revocation request', async () => {
+    opState.hangRevocation = true;
+    try {
+      await expect(
+        loginFor().revokeAccessToken('at_x', { signal: AbortSignal.timeout(25) }),
+      ).rejects.toThrow();
+    } finally {
+      opState.hangRevocation = false;
     }
   });
 });

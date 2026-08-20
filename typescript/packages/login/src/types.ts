@@ -56,6 +56,11 @@ export interface AuthorizationRequest {
   codeVerifier: string;
 }
 
+export interface RevokeTokenOptions {
+  /** Cancel the request. Without a signal, revocation times out after 5 seconds. */
+  signal?: AbortSignal;
+}
+
 export interface LoginResult {
   /**
    * The user's bkey ID — a stable pseudonymous DID. This is the identity.
