@@ -63,8 +63,9 @@ function assertSecureSameOrigin(issuer: string, url: string, what: string): stri
   return url;
 }
 
-async function fetchDiscovery(issuer: string): Promise<BkeyDiscovery> {
+async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<BkeyDiscovery> {
   const res = await fetch(`${issuer.replace(/\/$/, '')}${DISCOVERY_PATH}`, {
+    signal,
     headers: { accept: 'application/json' },
   });
   if (!res.ok) {
@@ -181,10 +182,38 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
  * plus issuer / audience / nonce / expiry — all before any claim is returned.
  */
 export function createBkeyLogin(config: BkeyLoginConfig) {
+  let discoveryDocument: BkeyDiscovery | null = null;
   let discoveryPromise: Promise<BkeyDiscovery> | null = null;
   let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
 
-  const discovery = () => (discoveryPromise ??= fetchDiscovery(config.issuer));
+  const discovery = (signal?: AbortSignal): Promise<BkeyDiscovery> => {
+    if (discoveryDocument) return Promise.resolve(discoveryDocument);
+
+    // A signal-specific operation must control its own discovery request. Do
+    // not attach it to an unbounded discovery request that another operation
+    // might already have started.
+    if (signal) {
+      return fetchDiscovery(config.issuer, signal).then((doc) => {
+        discoveryDocument = doc;
+        return doc;
+      });
+    }
+
+    if (!discoveryPromise) {
+      discoveryPromise = fetchDiscovery(config.issuer).then(
+        (doc) => {
+          discoveryDocument = doc;
+          discoveryPromise = null;
+          return doc;
+        },
+        (error: unknown) => {
+          discoveryPromise = null;
+          throw error;
+        },
+      );
+    }
+    return discoveryPromise;
+  };
   const jwks = async () => {
     if (!jwksCache) {
       const doc = await discovery();
@@ -199,7 +228,13 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
     tokenTypeHint: 'access_token' | 'refresh_token',
     opts: RevokeTokenOptions = {},
   ): Promise<void> => {
-    const doc = await discovery();
+    // Start one deadline at method entry and compose it with caller
+    // cancellation. The same signal bounds discovery and the revocation POST.
+    const deadlineSignal = AbortSignal.timeout(REVOCATION_TIMEOUT_MS);
+    const signal = opts.signal
+      ? AbortSignal.any([opts.signal, deadlineSignal])
+      : deadlineSignal;
+    const doc = await discovery(signal);
     if (!doc.revocation_endpoint) {
       throw new BkeyLoginError(
         'revocation_unavailable',
@@ -215,7 +250,7 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       method: 'POST',
       // Do not let a same-origin endpoint forward the token or client secret.
       redirect: 'error',
-      signal: opts.signal ?? AbortSignal.timeout(REVOCATION_TIMEOUT_MS),
+      signal,
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         token,
@@ -330,12 +365,12 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       };
     },
 
-    /** Revoke only this access token. Times out after 5 seconds by default. */
+    /** Revoke only this access token. The full operation has a 5-second deadline. */
     async revokeAccessToken(token: string, opts: RevokeTokenOptions = {}): Promise<void> {
       return revokeToken(token, 'access_token', opts);
     },
 
-    /** Revoke only this refresh token. Times out after 5 seconds by default. */
+    /** Revoke only this refresh token. The full operation has a 5-second deadline. */
     async revokeRefreshToken(token: string, opts: RevokeTokenOptions = {}): Promise<void> {
       return revokeToken(token, 'refresh_token', opts);
     },

@@ -43,6 +43,7 @@ const opState: {
   signRs256: boolean;
   lastRevocation: URLSearchParams | null;
   rejectRevocation: boolean;
+  hangDiscovery: boolean;
   hangRevocation: boolean;
 } = {
   nonce: null,
@@ -55,6 +56,7 @@ const opState: {
   signRs256: false,
   lastRevocation: null,
   rejectRevocation: false,
+  hangDiscovery: false,
   hangRevocation: false,
 };
 
@@ -82,6 +84,7 @@ beforeAll(async () => {
     };
     const url = new URL(req.url!, ISSUER);
     if (url.pathname === '/.well-known/openid-configuration') {
+      if (opState.hangDiscovery) return;
       return send(200, {
         issuer: ISSUER,
         authorization_endpoint: `${ISSUER}/oauth/authorize`,
@@ -387,6 +390,35 @@ describe('token revocation (RFC 7009)', () => {
       ).rejects.toThrow();
     } finally {
       opState.hangRevocation = false;
+    }
+  });
+
+  it('applies an already-aborted caller signal before fresh-client discovery', async () => {
+    opState.hangDiscovery = true;
+    const controller = new AbortController();
+    controller.abort();
+    try {
+      await expect(
+        loginFor().revokeAccessToken('at_x', { signal: controller.signal }),
+      ).rejects.toThrow();
+    } finally {
+      opState.hangDiscovery = false;
+    }
+  });
+
+  it('keeps the default deadline when the caller signal does not fire', async () => {
+    opState.hangDiscovery = true;
+    const shortDeadline = AbortSignal.timeout(25);
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(shortDeadline);
+    const caller = new AbortController();
+    try {
+      await expect(
+        loginFor().revokeAccessToken('at_x', { signal: caller.signal }),
+      ).rejects.toThrow();
+      expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+    } finally {
+      timeoutSpy.mockRestore();
+      opState.hangDiscovery = false;
     }
   });
 });

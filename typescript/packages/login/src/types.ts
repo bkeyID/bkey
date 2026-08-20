@@ -57,7 +57,7 @@ export interface AuthorizationRequest {
 }
 
 export interface RevokeTokenOptions {
-  /** Cancel the request. Without a signal, revocation times out after 5 seconds. */
+  /** Cancel the full operation sooner. The 5-second deadline remains active. */
   signal?: AbortSignal;
 }
 

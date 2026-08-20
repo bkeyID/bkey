@@ -394,7 +394,7 @@
             }
           },
           "401": {
-            "description": "invalid_client / unauthorized_client",
+            "description": "invalid_client",
             "content": {
               "application/json": {
                 "schema": {
@@ -402,7 +402,11 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "description": "Error code (e.g., invalid_client, unauthorized_client)"
+                      "enum": [
+                        "invalid_client"
+                      ],
+                      "example": "invalid_client",
+                      "description": "Client authentication failed"
                     },
                     "error_description": {
                       "type": "string"

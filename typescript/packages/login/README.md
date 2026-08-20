@@ -79,8 +79,9 @@ res.redirect(await bkey.endSessionUrl({ idToken: user.idToken }));
 
 Revocation applies only to the submitted token. Revoking a refresh token does
 not revoke related access tokens. Revoke both tokens to end both credentials.
-Each request times out after five seconds by default. Pass `{ signal }` as the
-second argument to cancel a request sooner.
+The full revocation operation, including discovery, has a five-second deadline.
+Pass `{ signal }` as the second argument to cancel it sooner. A caller signal
+does not disable the default deadline.
 
 `handleCallback` verifies everything before returning: state (CSRF), PKCE,
 id_token signature against bkey's published JWKS (EdDSA), issuer, audience,
