@@ -133,6 +133,30 @@ Each helper uses the `registrationClientUri` returned during registration. Use
 the one-time registration token as `managementAccessToken` for an anonymous
 client. After a claim, use the owner's user or developer dashboard token.
 
+<Note>
+  `claimRegisteredClient()` does not change an existing management options
+  object. A successful claim revokes the registration access token. Replace
+  `managementAccessToken` with the owner access token before the next read,
+  update, rotation, or deletion request.
+</Note>
+
+```ts
+await claimRegisteredClient({
+  issuer,
+  registrationClientUri,
+  ownerAccessToken,
+  registrationAccessToken,
+});
+
+const ownedManagement = {
+  issuer,
+  registrationClientUri,
+  managementAccessToken: ownerAccessToken,
+};
+
+await getRegisteredClient(ownedManagement);
+```
+
 ## Token format
 
 All tokens BKey issues are JWTs signed with **EdDSA (Ed25519)**:

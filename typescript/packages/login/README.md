@@ -95,6 +95,18 @@ Claiming revokes the registration access token. After a claim, pass the owner's
 user or developer dashboard token as `managementAccessToken` for later
 management calls.
 
+The SDK does not change an existing management options object. Create new
+options or replace its `managementAccessToken` before the next management call:
+
+```ts
+const ownedManagement = {
+  ...management,
+  managementAccessToken: ownerAccessToken,
+};
+
+await getRegisteredClient(ownedManagement);
+```
+
 ## 2a. Next.js / Auth.js — the 5-line version
 
 ```ts
