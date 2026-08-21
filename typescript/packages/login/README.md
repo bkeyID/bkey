@@ -14,17 +14,86 @@ npm install @bkey/login
 ```ts
 import { registerClient } from '@bkey/login';
 
-const { clientId, clientSecret } = await registerClient({
+const registration = await registerClient({
   issuer: 'https://id.bkey.id',
   redirectUris: ['https://yourapp.com/auth/callback/bkey'],
   clientName: 'Your App',
 });
-// Store clientSecret like a password — it is shown exactly once.
+
+const {
+  clientId,
+  clientSecret,
+  registrationClientUri,
+  registrationAccessToken,
+} = registration;
 ```
 
-(Equivalent one-liner: `curl -X POST https://id.bkey.id/oauth/register ...` —
+Store `clientSecret` like a password. Store `registrationAccessToken` as a
+separate sensitive credential. An anonymous registration returns the
+registration access token only once. You need it to read, update, rotate, claim,
+or delete the client later. The client secret cannot manage the registration.
+
+(Equivalent one-liner: `curl -X POST https://id.bkey.id/oauth/register ...` -
 RFC 7591. Zero-registration CIMD is also supported: host a client metadata
 document and use its URL as your `client_id`.)
+
+### Manage a registered client
+
+The lifecycle helpers use the per-client `registrationClientUri`. For an
+anonymous client, use the one-time registration access token:
+
+```ts
+import {
+  deleteRegisteredClient,
+  getRegisteredClient,
+  rotateClientSecret,
+  updateRegisteredClient,
+} from '@bkey/login';
+
+const management = {
+  issuer: 'https://id.bkey.id',
+  registrationClientUri,
+  managementAccessToken: registrationAccessToken!,
+};
+
+const current = await getRegisteredClient(management);
+
+await updateRegisteredClient({
+  ...management,
+  redirectUris: ['https://yourapp.com/auth/callback/bkey'],
+  postLogoutRedirectUris: ['https://yourapp.com/signed-out'],
+  clientName: 'Your App',
+});
+
+const rotated = await rotateClientSecret({
+  ...management,
+  graceHours: 24,
+});
+// Store rotated.clientSecret. It is returned only once.
+
+await deleteRegisteredClient(management);
+```
+
+`graceHours` defaults to `24`. Set it to `0` to stop old secrets immediately
+after a leak.
+
+To claim an anonymous client, send both the new owner's user or developer
+dashboard access token and the registration access token:
+
+```ts
+import { claimRegisteredClient } from '@bkey/login';
+
+await claimRegisteredClient({
+  issuer: 'https://id.bkey.id',
+  registrationClientUri,
+  ownerAccessToken,
+  registrationAccessToken: registrationAccessToken!,
+});
+```
+
+Claiming revokes the registration access token. After a claim, pass the owner's
+user or developer dashboard token as `managementAccessToken` for later
+management calls.
 
 ## 2a. Next.js / Auth.js — the 5-line version
 

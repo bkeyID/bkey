@@ -10,6 +10,16 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 Not yet published to npm. Build from source (`typescript/packages/login`) until the first release.
 
+### Added
+
+- **Dynamic client lifecycle helpers:** `getRegisteredClient()`,
+  `updateRegisteredClient()`, `rotateClientSecret()`,
+  `deleteRegisteredClient()`, and `claimRegisteredClient()` now expose the
+  backend client management operations.
+- **Registration management values:** `registerClient()` now returns the
+  per-client management URI, the one-time registration access token, issue and
+  expiry timestamps, and the complete registered metadata.
+
 ### Fixed
 
 - **Default issuer corrected to `https://id.bkey.id`** (was `https://auth.bkey.id`). `auth.bkey.id` serves an OIDC discovery document that declares `"issuer": "https://id.bkey.id"`, so every conformant client — Auth.js/oauth4webapi and this package's own `fetchDiscovery` — rejected the old default with `issuer_mismatch` before sign-in could start. The out-of-the-box `BkeyProvider({ clientId, clientSecret })` was therefore unusable without an explicit `issuer` override. `BKEY_DEFAULT_ISSUER`, the `registerClient` example, the Next.js quickstart's register script, and all README/JSDoc snippets now use the self-consistent host.

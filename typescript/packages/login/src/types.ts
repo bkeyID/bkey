@@ -33,8 +33,91 @@ export interface RegisteredClient {
   clientId: string;
   /** Present only for confidential clients. Store it like a password. */
   clientSecret?: string;
+  /** Unix timestamp when the client ID was issued. */
+  clientIdIssuedAt: number;
+  /** Unix timestamp when the client secret expires. `0` means no expiry. */
+  clientSecretExpiresAt?: number;
+  /** Per-client URI for all registration management operations. */
+  registrationClientUri: string;
+  /**
+   * One-time credential for an anonymous client's management URI.
+   * Store it separately from the client secret. It is not returned again.
+   */
+  registrationAccessToken?: string;
+  clientName?: string;
   redirectUris: string[];
+  postLogoutRedirectUris: string[];
+  grantTypes: string[];
+  responseTypes: string[];
+  tokenEndpointAuthMethod: string;
   idTokenSignedResponseAlg: string;
+  scope: string;
+}
+
+/** Client metadata returned by read, update, and claim operations. */
+export interface RegisteredClientMetadata {
+  clientId: string;
+  clientIdIssuedAt: number;
+  registrationClientUri: string;
+  clientName: string;
+  redirectUris: string[];
+  postLogoutRedirectUris: string[];
+  grantTypes: string[];
+  responseTypes: string[];
+  tokenEndpointAuthMethod: string;
+  idTokenSignedResponseAlg: string;
+  scope: string;
+}
+
+/** Authentication and location for an existing client registration. */
+export interface RegisteredClientManagementOptions {
+  /** The same issuer used to register the client. */
+  issuer: string;
+  /** The `registrationClientUri` returned during registration. */
+  registrationClientUri: string;
+  /**
+   * The one-time registration token for an anonymous client, or the owner user
+   * or developer-dashboard access token for an owned client. Never use the
+   * OAuth client secret here.
+   */
+  managementAccessToken: string;
+  /** Cancel the request. */
+  signal?: AbortSignal;
+}
+
+export interface UpdateRegisteredClientOptions extends RegisteredClientManagementOptions {
+  redirectUris?: string[];
+  postLogoutRedirectUris?: string[];
+  clientName?: string;
+  idTokenSignedResponseAlg?: string;
+}
+
+export interface RotateClientSecretOptions extends RegisteredClientManagementOptions {
+  /** Hours that old secrets stay valid. Defaults to 24. Use `0` after a leak. */
+  graceHours?: number;
+}
+
+export interface RotatedClientSecret {
+  clientId: string;
+  /** The new secret. It is returned only once. */
+  clientSecret: string;
+  /** Unix timestamp when the new secret expires. `0` means no expiry. */
+  clientSecretExpiresAt: number;
+  /** ISO timestamp for old-secret expiry, or `null` when grace is disabled. */
+  oldSecretExpiresAt: string | null;
+}
+
+export interface ClaimRegisteredClientOptions {
+  /** The same issuer used to register the client. */
+  issuer: string;
+  /** The `registrationClientUri` returned during registration. */
+  registrationClientUri: string;
+  /** User or developer-dashboard access token for the new owner. */
+  ownerAccessToken: string;
+  /** One-time token returned when the anonymous client was registered. */
+  registrationAccessToken: string;
+  /** Cancel the request. */
+  signal?: AbortSignal;
 }
 
 export interface BkeyLoginConfig {

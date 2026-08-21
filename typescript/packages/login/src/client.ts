@@ -5,14 +5,21 @@ import {
   type AuthorizationRequest,
   type BkeyDiscovery,
   type BkeyLoginConfig,
+  type ClaimRegisteredClientOptions,
   type LoginResult,
   type RevokeTokenOptions,
   type RegisterClientOptions,
   type RegisteredClient,
+  type RegisteredClientManagementOptions,
+  type RegisteredClientMetadata,
+  type RotateClientSecretOptions,
+  type RotatedClientSecret,
+  type UpdateRegisteredClientOptions,
 } from './types.js';
 
 const DISCOVERY_PATH = '/.well-known/openid-configuration';
 const REVOCATION_TIMEOUT_MS = 5_000;
+const CLIENT_MANAGEMENT_TIMEOUT_MS = 5_000;
 
 function b64url(buf: Buffer): string {
   return buf.toString('base64url');
@@ -61,6 +68,124 @@ function assertSecureSameOrigin(issuer: string, url: string, what: string): stri
     );
   }
   return url;
+}
+
+function stringArray(value: unknown, fallback: string[] = []): string[] {
+  return Array.isArray(value) ? value.map(String) : fallback;
+}
+
+function requiredString(
+  body: Record<string, unknown>,
+  field: string,
+  errorCode: string,
+): string {
+  if (typeof body[field] !== 'string' || body[field].length === 0) {
+    throw new BkeyLoginError(errorCode, `response is missing ${field}`);
+  }
+  return body[field];
+}
+
+function requiredNumber(
+  body: Record<string, unknown>,
+  field: string,
+  errorCode: string,
+): number {
+  const value = body[field];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new BkeyLoginError(errorCode, `response is missing ${field}`);
+  }
+  return value;
+}
+
+function clientMetadataFrom(body: Record<string, unknown>): RegisteredClientMetadata {
+  return {
+    clientId: requiredString(body, 'client_id', 'invalid_client_management_response'),
+    clientIdIssuedAt: requiredNumber(
+      body,
+      'client_id_issued_at',
+      'invalid_client_management_response',
+    ),
+    registrationClientUri: requiredString(
+      body,
+      'registration_client_uri',
+      'invalid_client_management_response',
+    ),
+    clientName: requiredString(body, 'client_name', 'invalid_client_management_response'),
+    redirectUris: stringArray(body.redirect_uris),
+    postLogoutRedirectUris: stringArray(body.post_logout_redirect_uris),
+    grantTypes: stringArray(body.grant_types),
+    responseTypes: stringArray(body.response_types),
+    tokenEndpointAuthMethod: requiredString(
+      body,
+      'token_endpoint_auth_method',
+      'invalid_client_management_response',
+    ),
+    idTokenSignedResponseAlg: requiredString(
+      body,
+      'id_token_signed_response_alg',
+      'invalid_client_management_response',
+    ),
+    scope: requiredString(body, 'scope', 'invalid_client_management_response'),
+  };
+}
+
+function clientManagementEndpoint(
+  issuer: string,
+  registrationClientUri: string,
+  suffix = '',
+): string {
+  const checked = assertSecureSameOrigin(
+    issuer,
+    registrationClientUri,
+    'registration_client_uri',
+  );
+  const url = new URL(checked);
+  if (url.username || url.password || url.search || url.hash) {
+    throw new BkeyLoginError(
+      'invalid_registration_client_uri',
+      'registration_client_uri must not contain credentials, a query, or a fragment',
+    );
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}${suffix}`;
+  return url.toString();
+}
+
+async function clientManagementRequest(
+  opts: {
+    issuer: string;
+    registrationClientUri: string;
+    accessToken: string;
+    signal?: AbortSignal;
+  },
+  operation: string,
+  method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
+  suffix = '',
+  requestBody?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const deadlineSignal = AbortSignal.timeout(CLIENT_MANAGEMENT_TIMEOUT_MS);
+  const signal = opts.signal
+    ? AbortSignal.any([opts.signal, deadlineSignal])
+    : deadlineSignal;
+  const endpoint = clientManagementEndpoint(opts.issuer, opts.registrationClientUri, suffix);
+  const res = await fetch(endpoint, {
+    method,
+    redirect: 'error',
+    signal,
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${opts.accessToken}`,
+      ...(requestBody ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(requestBody ? { body: JSON.stringify(requestBody) } : {}),
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new BkeyLoginError(
+      String(body.error ?? `${operation}_failed`),
+      String(body.error_description ?? `${operation} failed: HTTP ${res.status}`),
+    );
+  }
+  return body;
 }
 
 async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<BkeyDiscovery> {
@@ -155,11 +280,148 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
     );
   }
   return {
-    clientId: String(body.client_id),
+    clientId: requiredString(body, 'client_id', 'invalid_registration_response'),
     clientSecret: body.client_secret ? String(body.client_secret) : undefined,
+    clientIdIssuedAt: requiredNumber(
+      body,
+      'client_id_issued_at',
+      'invalid_registration_response',
+    ),
+    clientSecretExpiresAt:
+      body.client_secret_expires_at === undefined
+        ? undefined
+        : requiredNumber(body, 'client_secret_expires_at', 'invalid_registration_response'),
+    registrationClientUri: requiredString(
+      body,
+      'registration_client_uri',
+      'invalid_registration_response',
+    ),
+    registrationAccessToken: body.registration_access_token
+      ? String(body.registration_access_token)
+      : undefined,
+    clientName: body.client_name ? String(body.client_name) : undefined,
     redirectUris: (body.redirect_uris as string[]) ?? opts.redirectUris,
+    postLogoutRedirectUris: stringArray(
+      body.post_logout_redirect_uris,
+      opts.postLogoutRedirectUris ?? [],
+    ),
+    grantTypes: stringArray(body.grant_types, ['authorization_code']),
+    responseTypes: stringArray(body.response_types, ['code']),
+    tokenEndpointAuthMethod: String(
+      body.token_endpoint_auth_method ?? opts.tokenEndpointAuthMethod ?? 'client_secret_post',
+    ),
     idTokenSignedResponseAlg: String(body.id_token_signed_response_alg ?? 'EdDSA'),
+    scope: String(body.scope ?? 'openid'),
   };
+}
+
+/** Read an existing dynamic client registration. */
+export async function getRegisteredClient(
+  opts: RegisteredClientManagementOptions,
+): Promise<RegisteredClientMetadata> {
+  const body = await clientManagementRequest(
+    {
+      issuer: opts.issuer,
+      registrationClientUri: opts.registrationClientUri,
+      accessToken: opts.managementAccessToken,
+      signal: opts.signal,
+    },
+    'client_registration_read',
+    'GET',
+  );
+  return clientMetadataFrom(body);
+}
+
+/** Update the editable metadata for a dynamic client registration. */
+export async function updateRegisteredClient(
+  opts: UpdateRegisteredClientOptions,
+): Promise<RegisteredClientMetadata> {
+  const body = await clientManagementRequest(
+    {
+      issuer: opts.issuer,
+      registrationClientUri: opts.registrationClientUri,
+      accessToken: opts.managementAccessToken,
+      signal: opts.signal,
+    },
+    'client_registration_update',
+    'PATCH',
+    '',
+    {
+      ...(opts.redirectUris !== undefined ? { redirect_uris: opts.redirectUris } : {}),
+      ...(opts.postLogoutRedirectUris !== undefined
+        ? { post_logout_redirect_uris: opts.postLogoutRedirectUris }
+        : {}),
+      ...(opts.clientName !== undefined ? { client_name: opts.clientName } : {}),
+      ...(opts.idTokenSignedResponseAlg !== undefined
+        ? { id_token_signed_response_alg: opts.idTokenSignedResponseAlg }
+        : {}),
+    },
+  );
+  return clientMetadataFrom(body);
+}
+
+/** Rotate a confidential client's secret. The new secret is returned once. */
+export async function rotateClientSecret(
+  opts: RotateClientSecretOptions,
+): Promise<RotatedClientSecret> {
+  const body = await clientManagementRequest(
+    {
+      issuer: opts.issuer,
+      registrationClientUri: opts.registrationClientUri,
+      accessToken: opts.managementAccessToken,
+      signal: opts.signal,
+    },
+    'client_secret_rotation',
+    'POST',
+    '/rotate-secret',
+    opts.graceHours === undefined ? {} : { grace_hours: opts.graceHours },
+  );
+  return {
+    clientId: requiredString(body, 'client_id', 'invalid_client_management_response'),
+    clientSecret: requiredString(body, 'client_secret', 'invalid_client_management_response'),
+    clientSecretExpiresAt: requiredNumber(
+      body,
+      'client_secret_expires_at',
+      'invalid_client_management_response',
+    ),
+    oldSecretExpiresAt:
+      typeof body.old_secret_expires_at === 'string' ? body.old_secret_expires_at : null,
+  };
+}
+
+/** Revoke and deprovision a dynamic client registration. */
+export async function deleteRegisteredClient(
+  opts: RegisteredClientManagementOptions,
+): Promise<void> {
+  await clientManagementRequest(
+    {
+      issuer: opts.issuer,
+      registrationClientUri: opts.registrationClientUri,
+      accessToken: opts.managementAccessToken,
+      signal: opts.signal,
+    },
+    'client_registration_delete',
+    'DELETE',
+  );
+}
+
+/** Claim an anonymous registration for the authenticated user or developer. */
+export async function claimRegisteredClient(
+  opts: ClaimRegisteredClientOptions,
+): Promise<RegisteredClientMetadata> {
+  const body = await clientManagementRequest(
+    {
+      issuer: opts.issuer,
+      registrationClientUri: opts.registrationClientUri,
+      accessToken: opts.ownerAccessToken,
+      signal: opts.signal,
+    },
+    'client_registration_claim',
+    'POST',
+    '/claim',
+    { registration_access_token: opts.registrationAccessToken },
+  );
+  return clientMetadataFrom(body);
 }
 
 /**

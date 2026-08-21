@@ -8,7 +8,15 @@ import {
   generateKeyPair,
   type JWK,
 } from 'jose';
-import { createBkeyLogin, registerClient } from './client.js';
+import {
+  claimRegisteredClient,
+  createBkeyLogin,
+  deleteRegisteredClient,
+  getRegisteredClient,
+  registerClient,
+  rotateClientSecret,
+  updateRegisteredClient,
+} from './client.js';
 import { BkeyLoginError } from './types.js';
 import { BKEY_DEFAULT_ISSUER, BkeyProvider } from './authjs.js';
 
@@ -22,6 +30,8 @@ import { BKEY_DEFAULT_ISSUER, BkeyProvider } from './authjs.js';
 const PORT = 18583;
 const ISSUER = `http://localhost:${PORT}`;
 const CLIENT_ID = 'bkey_client_login_sdk';
+const MANAGED_CLIENT_ID = 'bkey_client_fresh123';
+const REGISTRATION_CLIENT_URI = `${ISSUER}/oauth/register/${MANAGED_CLIENT_ID}`;
 const REDIRECT = 'https://rp.example/auth/callback/bkey';
 
 let server: http.Server;
@@ -45,6 +55,13 @@ const opState: {
   rejectRevocation: boolean;
   hangDiscovery: boolean;
   hangRevocation: boolean;
+  rejectManagement: boolean;
+  managementRequests: Array<{
+    method: string;
+    path: string;
+    authorization?: string;
+    body?: Record<string, unknown>;
+  }>;
 } = {
   nonce: null,
   lastCodeVerifier: null,
@@ -58,6 +75,8 @@ const opState: {
   rejectRevocation: false,
   hangDiscovery: false,
   hangRevocation: false,
+  rejectManagement: false,
+  managementRequests: [],
 };
 
 beforeAll(async () => {
@@ -109,12 +128,65 @@ beforeAll(async () => {
       for await (const chunk of req) body += chunk;
       const parsed = JSON.parse(body) as Record<string, unknown>;
       return send(201, {
-        client_id: 'bkey_client_fresh123',
+        client_id: MANAGED_CLIENT_ID,
         client_secret: 'bkey_secret_shhh',
         client_id_issued_at: Math.floor(Date.now() / 1000),
+        client_secret_expires_at: 0,
+        registration_access_token: 'bkey_rat_once',
+        registration_client_uri: REGISTRATION_CLIENT_URI,
+        client_name: parsed.client_name,
         redirect_uris: parsed.redirect_uris,
+        post_logout_redirect_uris: parsed.post_logout_redirect_uris ?? [],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
         token_endpoint_auth_method: parsed.token_endpoint_auth_method,
         id_token_signed_response_alg: 'EdDSA',
+        scope: 'openid',
+      });
+    }
+    if (url.pathname.startsWith(REGISTRATION_CLIENT_URI.replace(ISSUER, ''))) {
+      let body: Record<string, unknown> | undefined;
+      if (req.method === 'PATCH' || req.method === 'POST') {
+        let raw = '';
+        for await (const chunk of req) raw += chunk;
+        body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+      }
+      opState.managementRequests.push({
+        method: req.method ?? '',
+        path: url.pathname,
+        authorization: req.headers.authorization,
+        body,
+      });
+      if (opState.rejectManagement) {
+        return send(401, {
+          error: 'unauthenticated',
+          error_description: 'invalid registration access token',
+        });
+      }
+      if (url.pathname === `${REGISTRATION_CLIENT_URI.replace(ISSUER, '')}/rotate-secret`) {
+        return send(200, {
+          client_id: MANAGED_CLIENT_ID,
+          client_secret: 'bkey_secret_rotated',
+          client_secret_expires_at: 0,
+          old_secret_expires_at:
+            body?.grace_hours === 0 ? null : '2026-08-22T12:00:00.000Z',
+        });
+      }
+      if (req.method === 'DELETE') {
+        res.statusCode = 204;
+        return res.end();
+      }
+      return send(200, {
+        client_id: MANAGED_CLIENT_ID,
+        client_id_issued_at: 1_776_000_000,
+        registration_client_uri: REGISTRATION_CLIENT_URI,
+        client_name: body?.client_name ?? 'Test RP',
+        redirect_uris: body?.redirect_uris ?? [REDIRECT],
+        post_logout_redirect_uris: body?.post_logout_redirect_uris ?? [],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'client_secret_post',
+        id_token_signed_response_alg: body?.id_token_signed_response_alg ?? 'EdDSA',
         scope: 'openid',
       });
     }
@@ -184,15 +256,131 @@ function loginFor(overrides: Partial<Parameters<typeof createBkeyLogin>[0]> = {}
 }
 
 describe('registerClient (RFC 7591)', () => {
-  it('registers and returns client_id + secret', async () => {
+  it('returns the one-time management values with the client credentials', async () => {
     const reg = await registerClient({
       issuer: ISSUER,
       redirectUris: [REDIRECT],
       clientName: 'Test RP',
     });
-    expect(reg.clientId).toBe('bkey_client_fresh123');
+    expect(reg.clientId).toBe(MANAGED_CLIENT_ID);
     expect(reg.clientSecret).toBe('bkey_secret_shhh');
+    expect(reg.clientSecretExpiresAt).toBe(0);
+    expect(reg.registrationClientUri).toBe(REGISTRATION_CLIENT_URI);
+    expect(reg.registrationAccessToken).toBe('bkey_rat_once');
+    expect(reg.clientName).toBe('Test RP');
+    expect(reg.grantTypes).toEqual(['authorization_code']);
+    expect(reg.responseTypes).toEqual(['code']);
+    expect(reg.tokenEndpointAuthMethod).toBe('client_secret_post');
     expect(reg.idTokenSignedResponseAlg).toBe('EdDSA');
+    expect(reg.scope).toBe('openid');
+  });
+});
+
+describe('dynamic client lifecycle (RFC 7592 + BKey extensions)', () => {
+  const management = {
+    issuer: ISSUER,
+    registrationClientUri: REGISTRATION_CLIENT_URI,
+    managementAccessToken: 'bkey_rat_once',
+  };
+
+  it('reads client metadata with the separate management token', async () => {
+    const client = await getRegisteredClient(management);
+
+    expect(client.clientId).toBe(MANAGED_CLIENT_ID);
+    expect(client.clientName).toBe('Test RP');
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'GET',
+      path: `/oauth/register/${MANAGED_CLIENT_ID}`,
+      authorization: 'Bearer bkey_rat_once',
+    });
+  });
+
+  it('updates only the supplied editable metadata', async () => {
+    const updated = await updateRegisteredClient({
+      ...management,
+      clientName: 'Renamed RP',
+      redirectUris: ['https://rp.example/new-callback'],
+      postLogoutRedirectUris: ['https://rp.example/signed-out'],
+      idTokenSignedResponseAlg: 'EdDSA',
+    });
+
+    expect(updated.clientName).toBe('Renamed RP');
+    expect(updated.redirectUris).toEqual(['https://rp.example/new-callback']);
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'PATCH',
+      authorization: 'Bearer bkey_rat_once',
+      body: {
+        client_name: 'Renamed RP',
+        redirect_uris: ['https://rp.example/new-callback'],
+        post_logout_redirect_uris: ['https://rp.example/signed-out'],
+        id_token_signed_response_alg: 'EdDSA',
+      },
+    });
+  });
+
+  it('rotates the secret with an explicit immediate-revocation grace period', async () => {
+    const rotated = await rotateClientSecret({ ...management, graceHours: 0 });
+
+    expect(rotated).toEqual({
+      clientId: MANAGED_CLIENT_ID,
+      clientSecret: 'bkey_secret_rotated',
+      clientSecretExpiresAt: 0,
+      oldSecretExpiresAt: null,
+    });
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'POST',
+      path: `/oauth/register/${MANAGED_CLIENT_ID}/rotate-secret`,
+      authorization: 'Bearer bkey_rat_once',
+      body: { grace_hours: 0 },
+    });
+  });
+
+  it('deletes the registration with the management credential', async () => {
+    await expect(deleteRegisteredClient(management)).resolves.toBeUndefined();
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'DELETE',
+      path: `/oauth/register/${MANAGED_CLIENT_ID}`,
+      authorization: 'Bearer bkey_rat_once',
+    });
+  });
+
+  it('claims an anonymous client with both required credentials', async () => {
+    const claimed = await claimRegisteredClient({
+      issuer: ISSUER,
+      registrationClientUri: REGISTRATION_CLIENT_URI,
+      ownerAccessToken: 'owner_user_token',
+      registrationAccessToken: 'bkey_rat_once',
+    });
+
+    expect(claimed.clientId).toBe(MANAGED_CLIENT_ID);
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'POST',
+      path: `/oauth/register/${MANAGED_CLIENT_ID}/claim`,
+      authorization: 'Bearer owner_user_token',
+      body: { registration_access_token: 'bkey_rat_once' },
+    });
+  });
+
+  it('preserves the backend error code and description', async () => {
+    opState.rejectManagement = true;
+    try {
+      await expect(getRegisteredClient(management)).rejects.toMatchObject({
+        name: 'BkeyLoginError',
+        code: 'unauthenticated',
+        message: 'invalid registration access token',
+      });
+    } finally {
+      opState.rejectManagement = false;
+    }
+  });
+
+  it('rejects a management URI outside the configured issuer origin', async () => {
+    await expect(
+      getRegisteredClient({
+        ...management,
+        registrationClientUri: `https://evil.example/oauth/register/${MANAGED_CLIENT_ID}`,
+      }),
+    ).rejects.toMatchObject({ code: 'discovery_endpoint_off_origin' });
   });
 });
 
