@@ -123,9 +123,13 @@ Not yet published to npm. Build from source (`typescript/packages/login`) until 
 
 ---
 
-## `@bkey/node` — no changes since 0.1.0
+## `@bkey/node` 0.1.1 — unreleased
 
-No public API changes in this release window.
+Published package is still 0.1.0.
+
+### Fixed
+
+- **Default issuer corrected to `https://id.bkey.id`** (was `https://api.bkey.id`). Production access tokens are minted with `iss: https://id.bkey.id`, so `verifyToken()` with no `issuer` option rejected every production token. `verifyToken` and JWKS URL construction now share one exported `DEFAULT_ISSUER`; the default JWKS URL is `${DEFAULT_ISSUER}/oauth/jwks`. Passing the old `https://api.bkey.id` or `https://auth.bkey.id` values as `issuer` still fails the exact `iss` check (those hosts serve discovery declaring `id.bkey.id`), but `invalid_issuer` now hints to use `https://id.bkey.id`.
 
 ---
 

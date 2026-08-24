@@ -40,7 +40,7 @@ import fastify from 'fastify';
 import { bkeyAuth } from '@bkey/node/fastify';
 
 const app = fastify();
-await app.register(bkeyAuth, { issuer: 'https://api.bkey.id' });
+await app.register(bkeyAuth, { issuer: 'https://id.bkey.id' });
 
 app.post('/deploy', {
   preHandler: [app.requireBKeyAuth({ scope: 'approve:deploy' })],
@@ -58,7 +58,7 @@ import { verifyToken, BKeyAuthError } from '@bkey/node';
 
 try {
   const claims = await verifyToken(token, {
-    issuer: 'https://api.bkey.id',
+    issuer: 'https://id.bkey.id',
     scope: 'approve:payment',
   });
   // claims.sub, claims.scopes, claims.client_id, ...
@@ -75,7 +75,7 @@ All three entry points accept the same options:
 
 | Option | Default | Description |
 |---|---|---|
-| `issuer` | `"https://api.bkey.id"` | BKey issuer URL — used for JWKS discovery and `iss` claim check (trailing slash tolerant) |
+| `issuer` | `"https://id.bkey.id"` | BKey issuer URL — used for JWKS discovery and `iss` claim check (trailing slash tolerant) |
 | `audience` | *(required**)* | Expected `aud` claim. Tokens without a matching audience are rejected |
 | `scope` | *(required**)* | Required scope(s). String for one, `string[]` for ALL-of. Pass `[]` to explicitly accept any scope |
 | `clockTolerance` | `30` | Clock skew tolerance in seconds for `exp` / `nbf` |

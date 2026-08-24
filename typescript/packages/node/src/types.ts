@@ -1,12 +1,15 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
+/** Production issuer (`iss` and JWKS discovery). Not `api.bkey.id` / `auth.bkey.id`. */
+export const DEFAULT_ISSUER = 'https://id.bkey.id';
+
 /**
  * Configuration for BKey token verification.
  */
 export interface BKeyVerifyConfig {
   /**
    * The BKey issuer URL. Used for JWKS discovery and `iss` claim check.
-   * @default "https://api.bkey.id"
+   * @default "https://id.bkey.id"
    */
   issuer?: string;
 

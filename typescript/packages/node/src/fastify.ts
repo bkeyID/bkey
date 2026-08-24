@@ -57,7 +57,7 @@ export type BKeyAuthPluginOptions = BKeyAdvancedVerifyConfig;
  * import { bkeyAuth, getBKeyAuth } from '@bkey/node/fastify';
  *
  * const app = fastify();
- * await app.register(bkeyAuth, { issuer: 'https://api.bkey.id' });
+ * await app.register(bkeyAuth, { issuer: 'https://id.bkey.id' });
  *
  * app.post('/deploy', {
  *   preHandler: [app.requireBKeyAuth({

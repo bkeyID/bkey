@@ -54,7 +54,7 @@ The boolean `approved` tells you the flow completed. `verifyToken()` tells you t
 import { verifyToken } from '@bkey/node';
 
 const claims = await verifyToken(result.accessToken, {
-  issuer: 'https://api.bkey.id',
+  issuer: 'https://id.bkey.id',
   scope: 'approve:deploy',
 });
 

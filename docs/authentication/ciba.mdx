@@ -38,7 +38,7 @@ if (!result.approved) throw new Error('Denied on device');
 
 // Always verify server-side before acting on it.
 const claims = await verifyToken(result.accessToken, {
-  issuer: 'https://api.bkey.id',
+  issuer: 'https://id.bkey.id',
   scope: 'approve:deploy',
 });
 

@@ -3,7 +3,12 @@
 import { createLocalJWKSet, createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 
 import type { BKeyAdvancedVerifyConfig, BKeyInlineJwks } from './types.js';
-import { BKeyAuthError } from './types.js';
+import { BKeyAuthError, DEFAULT_ISSUER } from './types.js';
+
+/** Default JWKS URL: `${DEFAULT_ISSUER}/oauth/jwks`. */
+export function defaultJwksUrl(issuer: string = DEFAULT_ISSUER): string {
+  return `${issuer.replace(/\/+$/, '')}/oauth/jwks`;
+}
 
 export type JWKSFetcher = JWTVerifyGetKey;
 
@@ -79,7 +84,7 @@ export function createJwksFetcher(config: BKeyAdvancedVerifyConfig = {}): JWKSFe
     return createLocalJWKSet(config.jwks as unknown as Parameters<typeof createLocalJWKSet>[0]);
   }
 
-  const rawIssuer = config.issuer ?? 'https://api.bkey.id';
+  const rawIssuer = config.issuer ?? DEFAULT_ISSUER;
   if (typeof rawIssuer !== 'string' || CONTROL_CHARS.test(rawIssuer)) {
     throw new BKeyAuthError('jwks_fetch_failed', 'issuer contains invalid characters');
   }
@@ -101,7 +106,7 @@ export function createJwksFetcher(config: BKeyAdvancedVerifyConfig = {}): JWKSFe
     throw new BKeyAuthError('jwks_fetch_failed', 'issuer is not a valid URL');
   }
 
-  const jwksUrl = config.jwksUrl ?? `${issuer}/oauth/jwks`;
+  const jwksUrl = config.jwksUrl ?? defaultJwksUrl(issuer);
   if (typeof jwksUrl !== 'string' || CONTROL_CHARS.test(jwksUrl)) {
     throw new BKeyAuthError('jwks_fetch_failed', 'jwksUrl contains invalid characters');
   }

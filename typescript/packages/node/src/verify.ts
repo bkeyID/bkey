@@ -4,9 +4,10 @@ import { jwtVerify, errors as joseErrors } from 'jose';
 
 import { createJwksFetcher, type JWKSFetcher } from './jwks.js';
 import type { BKeyAuthClaims, VerifyTokenOptions } from './types.js';
-import { BKeyAuthError } from './types.js';
+import { BKeyAuthError, DEFAULT_ISSUER } from './types.js';
 
-const DEFAULT_ISSUER = 'https://api.bkey.id';
+// api.bkey.id / auth.bkey.id serve discovery declaring DEFAULT_ISSUER.
+const DISCOVERY_ALIAS_ISSUERS = new Set(['https://api.bkey.id', 'https://auth.bkey.id']);
 // Cap on raw token string length. JWTs of even 8 KB are very large; real
 // BKey tokens are ~500-1500 bytes. This is a DoS backstop.
 const MAX_TOKEN_LENGTH = 8192;
@@ -129,7 +130,7 @@ function validateOpts(opts: VerifyTokenOptions): void {
  *
  * try {
  *   const claims = await verifyToken(jwt, {
- *     issuer: 'https://api.bkey.id',
+ *     issuer: 'https://id.bkey.id',
  *     audience: 'https://my-app.example',
  *     scope: 'approve:payment',
  *   });
@@ -225,7 +226,12 @@ export async function verifyToken(
   // to its issuer URL.
   const receivedIss = payload.iss.replace(/\/+$/, '');
   if (receivedIss !== issuer) {
-    throw new BKeyAuthError('invalid_issuer');
+    throw new BKeyAuthError(
+      'invalid_issuer',
+      DISCOVERY_ALIAS_ISSUERS.has(issuer)
+        ? `configured issuer "${issuer}" serves discovery declaring "${DEFAULT_ISSUER}" — pass issuer: "${DEFAULT_ISSUER}"`
+        : undefined,
+    );
   }
 
   // Scope claim MUST be a string if present. Silently coercing array-valued
