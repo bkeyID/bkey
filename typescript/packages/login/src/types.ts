@@ -27,43 +27,42 @@ export interface RegisterClientOptions {
    * so registering Basic would never authenticate (PR #32 review).
    */
   tokenEndpointAuthMethod?: 'client_secret_post' | 'none';
+  /** Cancel registration. The SDK's 5-second deadline remains active. */
+  signal?: AbortSignal;
 }
 
-export interface RegisteredClient {
+interface ClientMetadata {
   clientId: string;
-  /** Present only for confidential clients. Store it like a password. */
-  clientSecret?: string;
-  /** Unix timestamp when the client ID was issued. */
-  clientIdIssuedAt: number;
-  /** Unix timestamp when the client secret expires. `0` means no expiry. */
-  clientSecretExpiresAt?: number;
   /** Per-client URI for all registration management operations. */
   registrationClientUri: string;
-  /**
-   * One-time credential for an anonymous client's management URI.
-   * Store it separately from the client secret. It is not returned again.
-   */
-  registrationAccessToken?: string;
   clientName?: string;
   redirectUris: string[];
   postLogoutRedirectUris: string[];
   grantTypes: string[];
   responseTypes: string[];
-  tokenEndpointAuthMethod: string;
-  idTokenSignedResponseAlg: string;
-  scope: string;
+  tokenEndpointAuthMethod?: string;
+  idTokenSignedResponseAlg?: string;
+  scope?: string;
 }
 
 /** Client metadata returned by read, update, and claim operations. */
-export interface RegisteredClientMetadata {
-  clientId: string;
-  clientIdIssuedAt: number;
-  registrationClientUri: string;
-  clientName: string;
-  redirectUris: string[];
-  postLogoutRedirectUris: string[];
-  grantTypes: string[];
-  responseTypes: string[];
+export interface RegisteredClientMetadata extends ClientMetadata {
+  /** Replacement management credential returned by a read or update, if any. */
+  registrationAccessToken?: string;
+  /** Replacement client secret returned by a read or update, if any. */
+  clientSecret?: string;
+  /** Unix timestamp when a replacement secret expires. `0` means no expiry. */
+  clientSecretExpiresAt?: number;
+}
+
+/** Anonymous registration result with its required management credential. */
+export interface RegisteredClient extends ClientMetadata {
+  /** One-time anonymous management credential. Store it separately from the secret. */
+  registrationAccessToken: string;
+  /** Present only for confidential clients. Store it like a password. */
+  clientSecret?: string;
+  /** Present when a client secret is issued. `0` means no expiry. */
+  clientSecretExpiresAt?: number;
   tokenEndpointAuthMethod: string;
   idTokenSignedResponseAlg: string;
   scope: string;

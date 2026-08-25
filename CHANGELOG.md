@@ -17,15 +17,31 @@ Not yet published to npm. Build from source (`typescript/packages/login`) until 
   `deleteRegisteredClient()`, and `claimRegisteredClient()` now expose the
   backend client management operations.
 - **Registration management values:** `registerClient()` now returns the
-  per-client management URI, the one-time registration access token, issue and
-  expiry timestamps, and the complete registered metadata.
+  per-client management URI, the one-time registration access token, the
+  client-secret expiry, and the registered metadata needed by the SDK.
+- **Registration cancellation:** `registerClient()` accepts an `AbortSignal`;
+  discovery and registration retain a five-second SDK deadline.
 
 ### Fixed
 
+- **Production client management:** lifecycle helpers accept the production
+  `id.bkey.id` issuer with its server-issued `api.bkey.id` management URI while
+  continuing to reject untrusted cross-origin values.
+- **Lifecycle response handling:** management and registration errors support
+  both BKey's deployed nested envelope and the flat OAuth envelope. Optional
+  metadata remains optional, while malformed strings, numbers, arrays, and
+  secret-rotation timestamps now fail with a typed SDK error.
+- **Registration request hardening:** discovery and registration reject
+  redirects and share a five-second operation deadline.
 - **Default issuer corrected to `https://id.bkey.id`** (was `https://auth.bkey.id`). `auth.bkey.id` serves an OIDC discovery document that declares `"issuer": "https://id.bkey.id"`, so every conformant client — Auth.js/oauth4webapi and this package's own `fetchDiscovery` — rejected the old default with `issuer_mismatch` before sign-in could start. The out-of-the-box `BkeyProvider({ clientId, clientSecret })` was therefore unusable without an explicit `issuer` override. `BKEY_DEFAULT_ISSUER`, the `registerClient` example, the Next.js quickstart's register script, and all README/JSDoc snippets now use the self-consistent host.
 
 ### Changed
 
+- **Registration response validation:** `registerClient()` now requires
+  `client_id`, `registration_client_uri`, and the anonymous management token.
+  Confidential registrations must also include the issued client secret and
+  its expiry. Other metadata remains optional, and malformed fields are
+  rejected instead of coerced.
 - **Quickstart defaults to production** (`https://id.bkey.id`) instead of `staging-api.bkey.id`. Login with bkey is enabled in production, and the App Store build of the bkey app is enrolled there — so the documented path now works with the app a developer already has. Staging remains available via `BKEY_ISSUER`, and both READMEs document the environment/issuer table plus the `auth.bkey.id` pitfall.
 
 ---

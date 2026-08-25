@@ -55,7 +55,12 @@ const opState: {
   rejectRevocation: boolean;
   hangDiscovery: boolean;
   hangRevocation: boolean;
+  redirectDiscovery: boolean;
+  redirectRegistration: boolean;
+  hangRegistration: boolean;
   rejectManagement: boolean;
+  redirectManagement: boolean;
+  hangManagement: boolean;
   managementRequests: Array<{
     method: string;
     path: string;
@@ -75,7 +80,12 @@ const opState: {
   rejectRevocation: false,
   hangDiscovery: false,
   hangRevocation: false,
+  redirectDiscovery: false,
+  redirectRegistration: false,
+  hangRegistration: false,
   rejectManagement: false,
+  redirectManagement: false,
+  hangManagement: false,
   managementRequests: [],
 };
 
@@ -104,6 +114,11 @@ beforeAll(async () => {
     const url = new URL(req.url!, ISSUER);
     if (url.pathname === '/.well-known/openid-configuration') {
       if (opState.hangDiscovery) return;
+      if (opState.redirectDiscovery) {
+        res.statusCode = 307;
+        res.setHeader('location', `${ISSUER}/redirected-discovery`);
+        return res.end();
+      }
       return send(200, {
         issuer: ISSUER,
         authorization_endpoint: `${ISSUER}/oauth/authorize`,
@@ -124,6 +139,12 @@ beforeAll(async () => {
     }
     if (url.pathname === '/oauth/jwks') return send(200, { keys: [edJwk, rsaJwk] });
     if (url.pathname === '/oauth/register' && req.method === 'POST') {
+      if (opState.hangRegistration) return;
+      if (opState.redirectRegistration) {
+        res.statusCode = 307;
+        res.setHeader('location', `${ISSUER}/redirected-registration`);
+        return res.end();
+      }
       let body = '';
       for await (const chunk of req) body += chunk;
       const parsed = JSON.parse(body) as Record<string, unknown>;
@@ -145,6 +166,12 @@ beforeAll(async () => {
       });
     }
     if (url.pathname.startsWith(REGISTRATION_CLIENT_URI.replace(ISSUER, ''))) {
+      if (opState.hangManagement) return;
+      if (opState.redirectManagement) {
+        res.statusCode = 307;
+        res.setHeader('location', `${ISSUER}/redirected-management`);
+        return res.end();
+      }
       let body: Record<string, unknown> | undefined;
       if (req.method === 'PATCH' || req.method === 'POST') {
         let raw = '';
@@ -159,8 +186,11 @@ beforeAll(async () => {
       });
       if (opState.rejectManagement) {
         return send(401, {
-          error: 'unauthenticated',
-          error_description: 'invalid registration access token',
+          success: false,
+          error: {
+            code: 'unauthenticated',
+            message: 'invalid registration access token',
+          },
         });
       }
       if (url.pathname === `${REGISTRATION_CLIENT_URI.replace(ISSUER, '')}/rotate-secret`) {
@@ -255,6 +285,23 @@ function loginFor(overrides: Partial<Parameters<typeof createBkeyLogin>[0]> = {}
   });
 }
 
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function discoveryResponse(issuer: string): Response {
+  return jsonResponse({
+    issuer,
+    authorization_endpoint: `${issuer}/oauth/authorize`,
+    token_endpoint: `${issuer}/oauth/token`,
+    jwks_uri: `${issuer}/oauth/jwks`,
+    registration_endpoint: `${issuer}/oauth/register`,
+  });
+}
+
 describe('registerClient (RFC 7591)', () => {
   it('returns the one-time management values with the client credentials', async () => {
     const reg = await registerClient({
@@ -274,9 +321,216 @@ describe('registerClient (RFC 7591)', () => {
     expect(reg.idTokenSignedResponseAlg).toBe('EdDSA');
     expect(reg.scope).toBe('openid');
   });
+
+  it('registers without a client name and can read the registration afterwards', async () => {
+    const reg = await registerClient({ issuer: ISSUER, redirectUris: [REDIRECT] });
+    expect(reg.clientName).toBeUndefined();
+
+    const current = await getRegisteredClient({
+      issuer: ISSUER,
+      registrationClientUri: reg.registrationClientUri,
+      managementAccessToken: reg.registrationAccessToken!,
+    });
+    expect(current.clientId).toBe(reg.clientId);
+  });
+
+  it('accepts omitted optional response metadata and uses request defaults', async () => {
+    const issuer = 'https://issuer.example';
+    const registrationClientUri = `${issuer}/oauth/register/minimal`;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(discoveryResponse(issuer))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            client_id: 'minimal',
+            registration_client_uri: registrationClientUri,
+            registration_access_token: 'minimal-rat',
+          },
+          201,
+        ),
+      );
+    try {
+      const reg = await registerClient({
+        issuer,
+        redirectUris: [REDIRECT],
+        tokenEndpointAuthMethod: 'none',
+      });
+      expect(reg.clientName).toBeUndefined();
+      expect(reg.registrationAccessToken).toBe('minimal-rat');
+      expect(reg.clientSecret).toBeUndefined();
+      expect(reg.redirectUris).toEqual([REDIRECT]);
+      expect(reg.grantTypes).toEqual(['authorization_code']);
+      expect(reg.tokenEndpointAuthMethod).toBe('none');
+      expect(reg.scope).toBe('openid');
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        2,
+        `${issuer}/oauth/register`,
+        expect.objectContaining({ redirect: 'error', signal: expect.any(AbortSignal) }),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rejects malformed redirect URI arrays instead of casting them', async () => {
+    const issuer = 'https://issuer.example';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(discoveryResponse(issuer))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            client_id: 'malformed',
+            client_secret: 'secret',
+            client_secret_expires_at: 0,
+            registration_client_uri: `${issuer}/oauth/register/malformed`,
+            registration_access_token: 'malformed-rat',
+            redirect_uris: [{ url: REDIRECT }],
+          },
+          201,
+        ),
+      );
+    try {
+      await expect(registerClient({ issuer, redirectUris: [REDIRECT] })).rejects.toMatchObject({
+        code: 'invalid_registration_response',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('requires the management token in an anonymous registration response', async () => {
+    const issuer = 'https://issuer.example';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(discoveryResponse(issuer))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            client_id: 'missing-token',
+            registration_client_uri: `${issuer}/oauth/register/missing-token`,
+          },
+          201,
+        ),
+      );
+    try {
+      await expect(
+        registerClient({
+          issuer,
+          redirectUris: [REDIRECT],
+          tokenEndpointAuthMethod: 'none',
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_registration_response' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('requires credentials in a confidential registration response', async () => {
+    const issuer = 'https://issuer.example';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(discoveryResponse(issuer))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            client_id: 'missing-secret',
+            registration_client_uri: `${issuer}/oauth/register/missing-secret`,
+            registration_access_token: 'missing-secret-rat',
+          },
+          201,
+        ),
+      );
+    try {
+      await expect(registerClient({ issuer, redirectUris: [REDIRECT] })).rejects.toMatchObject({
+        code: 'invalid_registration_response',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('requires an expiry when a registration response includes a client secret', async () => {
+    const issuer = 'https://issuer.example';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(discoveryResponse(issuer))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            client_id: 'missing-expiry',
+            client_secret: 'secret',
+            registration_client_uri: `${issuer}/oauth/register/missing-expiry`,
+            registration_access_token: 'missing-expiry-rat',
+          },
+          201,
+        ),
+      );
+    try {
+      await expect(registerClient({ issuer, redirectUris: [REDIRECT] })).rejects.toMatchObject({
+        code: 'invalid_registration_response',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('preserves a nested production registration error', async () => {
+    const issuer = 'https://issuer.example';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(discoveryResponse(issuer))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            success: false,
+            error: { code: 'resource_exhausted', message: 'too many registrations' },
+          },
+          429,
+        ),
+      );
+    try {
+      await expect(registerClient({ issuer, redirectUris: [REDIRECT] })).rejects.toMatchObject({
+        code: 'resource_exhausted',
+        message: 'too many registrations',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rejects redirects during discovery and registration', async () => {
+    opState.redirectDiscovery = true;
+    try {
+      await expect(registerClient({ issuer: ISSUER, redirectUris: [REDIRECT] })).rejects.toThrow();
+    } finally {
+      opState.redirectDiscovery = false;
+    }
+
+    opState.redirectRegistration = true;
+    try {
+      await expect(registerClient({ issuer: ISSUER, redirectUris: [REDIRECT] })).rejects.toThrow();
+    } finally {
+      opState.redirectRegistration = false;
+    }
+  });
+
+  it('applies the five-second deadline to the full registration operation', async () => {
+    opState.hangRegistration = true;
+    const shortDeadline = AbortSignal.timeout(25);
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(shortDeadline);
+    try {
+      await expect(registerClient({ issuer: ISSUER, redirectUris: [REDIRECT] })).rejects.toThrow();
+      expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+    } finally {
+      timeoutSpy.mockRestore();
+      opState.hangRegistration = false;
+    }
+  });
 });
 
-describe('dynamic client lifecycle (RFC 7592 + BKey extensions)', () => {
+describe('BKey dynamic client lifecycle', () => {
   const management = {
     issuer: ISSUER,
     registrationClientUri: REGISTRATION_CLIENT_URI,
@@ -371,6 +625,164 @@ describe('dynamic client lifecycle (RFC 7592 + BKey extensions)', () => {
       });
     } finally {
       opState.rejectManagement = false;
+    }
+  });
+
+  it('also accepts the flat OAuth error envelope used by newer backend code', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: 'permission_denied',
+          error_description: 'owner token required',
+        },
+        403,
+      ),
+    );
+    try {
+      await expect(getRegisteredClient(management)).rejects.toMatchObject({
+        code: 'permission_denied',
+        message: 'owner token required',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('accepts the production API host for a production issuer', async () => {
+    const registrationClientUri =
+      'https://api.bkey.id/oauth/register/bkey_client_production';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        client_id: 'bkey_client_production',
+        registration_client_uri: registrationClientUri,
+      }),
+    );
+    try {
+      await expect(
+        getRegisteredClient({
+          issuer: 'https://id.bkey.id',
+          registrationClientUri,
+          managementAccessToken: 'rat',
+        }),
+      ).resolves.toMatchObject({ clientId: 'bkey_client_production' });
+      expect(fetchSpy).toHaveBeenCalledWith(
+        registrationClientUri,
+        expect.objectContaining({ redirect: 'error' }),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('accepts query-based RFC 7592 management URIs for standard operations', async () => {
+    const registrationClientUri = `${ISSUER}/oauth/register?client_id=${MANAGED_CLIENT_ID}`;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        client_id: MANAGED_CLIENT_ID,
+        registration_client_uri: registrationClientUri,
+      }),
+    );
+    try {
+      await getRegisteredClient({ ...management, registrationClientUri });
+      expect(fetchSpy).toHaveBeenCalledWith(registrationClientUri, expect.any(Object));
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('does not include URI credentials in validation errors', async () => {
+    const registrationClientUri =
+      'https://registration-token@evil.example/oauth/register/client';
+    try {
+      await getRegisteredClient({ ...management, registrationClientUri });
+      throw new Error('expected getRegisteredClient to reject');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'invalid_endpoint' });
+      expect((error as Error).message).not.toContain('registration-token');
+    }
+  });
+
+  it('accepts omitted optional metadata and exposes replacement credentials', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        client_id: MANAGED_CLIENT_ID,
+        registration_client_uri: REGISTRATION_CLIENT_URI,
+        registration_access_token: 'bkey_rat_replacement',
+        client_secret: 'bkey_secret_replacement',
+        client_secret_expires_at: 0,
+      }),
+    );
+    try {
+      const client = await getRegisteredClient(management);
+      expect(client.clientName).toBeUndefined();
+      expect(client.redirectUris).toEqual([]);
+      expect(client.registrationAccessToken).toBe('bkey_rat_replacement');
+      expect(client.clientSecret).toBe('bkey_secret_replacement');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rejects malformed management metadata arrays', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        client_id: MANAGED_CLIENT_ID,
+        registration_client_uri: REGISTRATION_CLIENT_URI,
+        redirect_uris: [{ url: REDIRECT }, null],
+      }),
+    );
+    try {
+      await expect(getRegisteredClient(management)).rejects.toMatchObject({
+        code: 'invalid_client_management_response',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('sends the documented 24-hour rotation default', async () => {
+    await rotateClientSecret(management);
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'POST',
+      body: { grace_hours: 24 },
+    });
+  });
+
+  it('rejects a malformed old-secret expiry instead of reporting immediate revocation', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        client_id: MANAGED_CLIENT_ID,
+        client_secret: 'bkey_secret_rotated',
+        client_secret_expires_at: 0,
+        old_secret_expires_at: 24,
+      }),
+    );
+    try {
+      await expect(rotateClientSecret(management)).rejects.toMatchObject({
+        code: 'invalid_client_management_response',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rejects management redirects and applies its default deadline', async () => {
+    opState.redirectManagement = true;
+    try {
+      await expect(getRegisteredClient(management)).rejects.toThrow();
+    } finally {
+      opState.redirectManagement = false;
+    }
+
+    opState.hangManagement = true;
+    const shortDeadline = AbortSignal.timeout(25);
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(shortDeadline);
+    try {
+      await expect(getRegisteredClient(management)).rejects.toThrow();
+      expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+    } finally {
+      timeoutSpy.mockRestore();
+      opState.hangManagement = false;
     }
   });
 

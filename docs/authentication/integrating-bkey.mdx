@@ -133,6 +133,18 @@ Each helper uses the `registrationClientUri` returned during registration. Use
 the one-time registration token as `managementAccessToken` for an anonymous
 client. After a claim, use the owner's user or developer dashboard token.
 
+Production can return a management URI on `https://api.bkey.id` while the
+issuer is `https://id.bkey.id`. Use the returned URI without changing its host.
+The SDK accepts this exact BKey host pair and rejects other cross-origin
+management URIs.
+
+If you retain the management credential, you can change redirect URIs and
+rotate a lost or leaked client secret without registering a replacement client.
+
+BKey does not currently rotate the registration token or client secret during
+a metadata read or update. The response types still expose replacement values
+if this behavior changes. Store a returned replacement before the next call.
+
 <Note>
   `claimRegisteredClient()` does not change an existing management options
   object. A successful claim revokes the registration access token. Replace

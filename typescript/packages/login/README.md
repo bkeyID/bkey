@@ -42,6 +42,10 @@ document and use its URL as your `client_id`.)
 The lifecycle helpers use the per-client `registrationClientUri`. For an
 anonymous client, use the one-time registration access token:
 
+In production, the issuer is `https://id.bkey.id`, but the backend can return a
+management URI on `https://api.bkey.id`. The SDK accepts this exact BKey host
+pair and same-origin management URIs. It rejects all other cross-origin values.
+
 ```ts
 import {
   deleteRegisteredClient,
@@ -70,12 +74,21 @@ const rotated = await rotateClientSecret({
   graceHours: 24,
 });
 // Store rotated.clientSecret. It is returned only once.
-
-await deleteRegisteredClient(management);
 ```
 
 `graceHours` defaults to `24`. Set it to `0` to stop old secrets immediately
 after a leak.
+
+RFC 7592 permits a read or update response to replace the registration access
+token or client secret. BKey does not currently rotate either credential on
+these operations. If a response includes `registrationAccessToken` or
+`clientSecret`, replace the stored credential before the next request.
+
+Delete a registration only when you intend to deprovision it:
+
+```ts
+await deleteRegisteredClient(management);
+```
 
 To claim an anonymous client, send both the new owner's user or developer
 dashboard access token and the registration access token:
