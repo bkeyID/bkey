@@ -14,17 +14,111 @@ npm install @bkey/login
 ```ts
 import { registerClient } from '@bkey/login';
 
-const { clientId, clientSecret } = await registerClient({
+const registration = await registerClient({
   issuer: 'https://id.bkey.id',
   redirectUris: ['https://yourapp.com/auth/callback/bkey'],
   clientName: 'Your App',
 });
-// Store clientSecret like a password — it is shown exactly once.
+
+const {
+  clientId,
+  clientSecret,
+  registrationClientUri,
+  registrationAccessToken,
+} = registration;
 ```
 
-(Equivalent one-liner: `curl -X POST https://id.bkey.id/oauth/register ...` —
+Store `clientSecret` like a password. Store `registrationAccessToken` as a
+separate sensitive credential. An anonymous registration returns the
+registration access token only once. You need it to read, update, rotate, claim,
+or delete the client later. The client secret cannot manage the registration.
+
+(Equivalent one-liner: `curl -X POST https://id.bkey.id/oauth/register ...` -
 RFC 7591. Zero-registration CIMD is also supported: host a client metadata
 document and use its URL as your `client_id`.)
+
+### Manage a registered client
+
+The lifecycle helpers use the per-client `registrationClientUri`. For an
+anonymous client, use the one-time registration access token:
+
+In production, the issuer is `https://id.bkey.id`, but the backend can return a
+management URI on `https://api.bkey.id`. The SDK accepts this exact BKey host
+pair and same-origin management URIs. It rejects all other cross-origin values.
+
+```ts
+import {
+  deleteRegisteredClient,
+  getRegisteredClient,
+  rotateClientSecret,
+  updateRegisteredClient,
+} from '@bkey/login';
+
+const management = {
+  issuer: 'https://id.bkey.id',
+  registrationClientUri,
+  managementAccessToken: registrationAccessToken!,
+};
+
+const current = await getRegisteredClient(management);
+
+await updateRegisteredClient({
+  ...management,
+  redirectUris: ['https://yourapp.com/auth/callback/bkey'],
+  postLogoutRedirectUris: ['https://yourapp.com/signed-out'],
+  clientName: 'Your App',
+});
+
+const rotated = await rotateClientSecret({
+  ...management,
+  graceHours: 24,
+});
+// Store rotated.clientSecret. It is returned only once.
+```
+
+`graceHours` defaults to `24`. Set it to `0` to stop old secrets immediately
+after a leak.
+
+RFC 7592 permits a read or update response to replace the registration access
+token or client secret. BKey does not currently rotate either credential on
+these operations. If a response includes `registrationAccessToken` or
+`clientSecret`, replace the stored credential before the next request.
+
+Delete a registration only when you intend to deprovision it:
+
+```ts
+await deleteRegisteredClient(management);
+```
+
+To claim an anonymous client, send both the new owner's user or developer
+dashboard access token and the registration access token:
+
+```ts
+import { claimRegisteredClient } from '@bkey/login';
+
+await claimRegisteredClient({
+  issuer: 'https://id.bkey.id',
+  registrationClientUri,
+  ownerAccessToken,
+  registrationAccessToken: registrationAccessToken!,
+});
+```
+
+Claiming revokes the registration access token. After a claim, pass the owner's
+user or developer dashboard token as `managementAccessToken` for later
+management calls.
+
+The SDK does not change an existing management options object. Create new
+options or replace its `managementAccessToken` before the next management call:
+
+```ts
+const ownedManagement = {
+  ...management,
+  managementAccessToken: ownerAccessToken,
+};
+
+await getRegisteredClient(ownedManagement);
+```
 
 ## 2a. Next.js / Auth.js — the 5-line version
 

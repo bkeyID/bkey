@@ -5,14 +5,28 @@ import {
   type AuthorizationRequest,
   type BkeyDiscovery,
   type BkeyLoginConfig,
+  type ClaimRegisteredClientOptions,
   type LoginResult,
   type RevokeTokenOptions,
   type RegisterClientOptions,
   type RegisteredClient,
+  type RegisteredClientManagementOptions,
+  type RegisteredClientMetadata,
+  type RotateClientSecretOptions,
+  type RotatedClientSecret,
+  type UpdateRegisteredClientOptions,
 } from './types.js';
 
 const DISCOVERY_PATH = '/.well-known/openid-configuration';
 const REVOCATION_TIMEOUT_MS = 5_000;
+const DISCOVERY_TIMEOUT_MS = 5_000;
+const REGISTRATION_TIMEOUT_MS = 5_000;
+const CLIENT_MANAGEMENT_TIMEOUT_MS = 5_000;
+// Production constructs registration_client_uri from the API audience even
+// though its OIDC issuer is id.bkey.id. Keep this exception exact so a caller
+// cannot send a management bearer token to an arbitrary cross-origin host.
+const PRODUCTION_ISSUER_ORIGIN = 'https://id.bkey.id';
+const PRODUCTION_MANAGEMENT_ORIGIN = 'https://api.bkey.id';
 
 function b64url(buf: Buffer): string {
   return buf.toString('base64url');
@@ -37,6 +51,27 @@ function isLoopbackHostname(hostname: string): boolean {
   );
 }
 
+function requestSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const deadlineSignal = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, deadlineSignal]) : deadlineSignal;
+}
+
+function parseUrl(url: string, what: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new BkeyLoginError('invalid_endpoint', `${what} is not a valid URL`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new BkeyLoginError(
+      'invalid_endpoint',
+      `${what} must not contain embedded credentials`,
+    );
+  }
+  return parsed;
+}
+
 /**
  * Endpoints taken from discovery must use HTTPS and live on the configured
  * issuer's origin. Plain HTTP is permitted only on a loopback host for local
@@ -44,28 +79,229 @@ function isLoopbackHostname(hostname: string): boolean {
  * insecure discovery document.
  */
 function assertSecureSameOrigin(issuer: string, url: string, what: string): string {
-  const endpoint = new URL(url);
+  const endpoint = parseUrl(url, what);
   if (
     endpoint.protocol !== 'https:' &&
     !(endpoint.protocol === 'http:' && isLoopbackHostname(endpoint.hostname))
   ) {
     throw new BkeyLoginError(
       'discovery_endpoint_insecure',
-      `${what} (${url}) must use HTTPS (HTTP is allowed only for loopback development)`,
+      `${what} must use HTTPS (HTTP is allowed only for loopback development)`,
     );
   }
   if (endpoint.origin !== new URL(issuer).origin) {
     throw new BkeyLoginError(
       'discovery_endpoint_off_origin',
-      `${what} (${url}) is not on the issuer origin (${issuer})`,
+      `${what} origin (${endpoint.origin}) is not on the issuer origin (${new URL(issuer).origin})`,
     );
   }
   return url;
 }
 
-async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<BkeyDiscovery> {
-  const res = await fetch(`${issuer.replace(/\/$/, '')}${DISCOVERY_PATH}`, {
+function optionalString(
+  body: Record<string, unknown>,
+  field: string,
+  errorCode: string,
+): string | undefined {
+  const value = body[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new BkeyLoginError(errorCode, `response field ${field} must be a non-empty string`);
+  }
+  return value;
+}
+
+function optionalNumber(
+  body: Record<string, unknown>,
+  field: string,
+  errorCode: string,
+): number | undefined {
+  const value = body[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new BkeyLoginError(errorCode, `response field ${field} must be a finite number`);
+  }
+  return value;
+}
+
+function stringArray(
+  body: Record<string, unknown>,
+  field: string,
+  errorCode: string,
+  fallback: string[] = [],
+): string[] {
+  const value = body[field];
+  if (value === undefined) return fallback;
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    throw new BkeyLoginError(errorCode, `response field ${field} must be an array of strings`);
+  }
+  return value;
+}
+
+function requiredString(
+  body: Record<string, unknown>,
+  field: string,
+  errorCode: string,
+): string {
+  if (typeof body[field] !== 'string' || body[field].length === 0) {
+    throw new BkeyLoginError(errorCode, `response is missing ${field}`);
+  }
+  return body[field];
+}
+
+function requiredNumber(
+  body: Record<string, unknown>,
+  field: string,
+  errorCode: string,
+): number {
+  const value = body[field];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new BkeyLoginError(errorCode, `response is missing ${field}`);
+  }
+  return value;
+}
+
+function clientMetadataFrom(body: Record<string, unknown>): RegisteredClientMetadata {
+  const errorCode = 'invalid_client_management_response';
+  return {
+    clientId: requiredString(body, 'client_id', errorCode),
+    registrationClientUri: requiredString(
+      body,
+      'registration_client_uri',
+      errorCode,
+    ),
+    registrationAccessToken: optionalString(body, 'registration_access_token', errorCode),
+    clientSecret: optionalString(body, 'client_secret', errorCode),
+    clientSecretExpiresAt: optionalNumber(body, 'client_secret_expires_at', errorCode),
+    clientName: optionalString(body, 'client_name', errorCode),
+    redirectUris: stringArray(body, 'redirect_uris', errorCode),
+    postLogoutRedirectUris: stringArray(body, 'post_logout_redirect_uris', errorCode),
+    grantTypes: stringArray(body, 'grant_types', errorCode),
+    responseTypes: stringArray(body, 'response_types', errorCode),
+    tokenEndpointAuthMethod: optionalString(body, 'token_endpoint_auth_method', errorCode),
+    idTokenSignedResponseAlg: optionalString(body, 'id_token_signed_response_alg', errorCode),
+    scope: optionalString(body, 'scope', errorCode),
+  };
+}
+
+function responseError(
+  body: Record<string, unknown>,
+  fallbackCode: string,
+  fallbackMessage: string,
+): BkeyLoginError {
+  const nested = body.error;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const error = nested as Record<string, unknown>;
+    return new BkeyLoginError(
+      typeof error.code === 'string' ? error.code : fallbackCode,
+      typeof error.message === 'string' ? error.message : fallbackMessage,
+    );
+  }
+  return new BkeyLoginError(
+    typeof body.error === 'string' ? body.error : fallbackCode,
+    typeof body.error_description === 'string' ? body.error_description : fallbackMessage,
+  );
+}
+
+function assertSecureManagementUri(issuer: string, registrationClientUri: string): URL {
+  const url = parseUrl(registrationClientUri, 'registration_client_uri');
+  if (
+    url.protocol !== 'https:' &&
+    !(url.protocol === 'http:' && isLoopbackHostname(url.hostname))
+  ) {
+    throw new BkeyLoginError(
+      'discovery_endpoint_insecure',
+      'registration_client_uri must use HTTPS (HTTP is allowed only for loopback development)',
+    );
+  }
+
+  const issuerOrigin = new URL(issuer).origin;
+  const isProductionManagementOrigin =
+    issuerOrigin === PRODUCTION_ISSUER_ORIGIN &&
+    url.origin === PRODUCTION_MANAGEMENT_ORIGIN;
+  if (url.origin !== issuerOrigin && !isProductionManagementOrigin) {
+    throw new BkeyLoginError(
+      'discovery_endpoint_off_origin',
+      `registration_client_uri origin (${url.origin}) is not trusted for issuer origin (${issuerOrigin})`,
+    );
+  }
+  return url;
+}
+
+function clientManagementEndpoint(
+  issuer: string,
+  registrationClientUri: string,
+  suffix = '',
+): string {
+  const url = assertSecureManagementUri(issuer, registrationClientUri);
+  if (url.hash) {
+    throw new BkeyLoginError(
+      'invalid_registration_client_uri',
+      'registration_client_uri must not contain a fragment',
+    );
+  }
+  if (suffix && url.search) {
+    throw new BkeyLoginError(
+      'invalid_registration_client_uri',
+      'query-based registration_client_uri values do not support BKey extension paths',
+    );
+  }
+  if (suffix) {
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}${suffix}`;
+  }
+  return url.toString();
+}
+
+async function clientManagementRequest(
+  opts: {
+    issuer: string;
+    registrationClientUri: string;
+    accessToken: string;
+    signal?: AbortSignal;
+  },
+  operation: string,
+  method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
+  suffix = '',
+  requestBody?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const signal = requestSignal(opts.signal, CLIENT_MANAGEMENT_TIMEOUT_MS);
+  const endpoint = clientManagementEndpoint(opts.issuer, opts.registrationClientUri, suffix);
+  const res = await fetch(endpoint, {
+    method,
+    redirect: 'error',
     signal,
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${opts.accessToken}`,
+      ...(requestBody ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(requestBody ? { body: JSON.stringify(requestBody) } : {}),
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw responseError(
+      body,
+      `${operation}_failed`,
+      `${operation} failed: HTTP ${res.status}`,
+    );
+  }
+  return body;
+}
+
+function managementRequestOptions(opts: RegisteredClientManagementOptions) {
+  return {
+    issuer: opts.issuer,
+    registrationClientUri: opts.registrationClientUri,
+    accessToken: opts.managementAccessToken,
+    signal: opts.signal,
+  };
+}
+
+async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<BkeyDiscovery> {
+  const boundedSignal = requestSignal(signal, DISCOVERY_TIMEOUT_MS);
+  const res = await fetch(`${issuer.replace(/\/$/, '')}${DISCOVERY_PATH}`, {
+    signal: boundedSignal,
+    redirect: 'error',
     headers: { accept: 'application/json' },
   });
   if (!res.ok) {
@@ -122,7 +358,8 @@ async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<Bke
  * Store the returned secret like a password — it is shown exactly once.
  */
 export async function registerClient(opts: RegisterClientOptions): Promise<RegisteredClient> {
-  const discovery = await fetchDiscovery(opts.issuer);
+  const signal = requestSignal(opts.signal, REGISTRATION_TIMEOUT_MS);
+  const discovery = await fetchDiscovery(opts.issuer, signal);
   if (!discovery.registration_endpoint) {
     throw new BkeyLoginError(
       'registration_unavailable',
@@ -132,6 +369,8 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
   assertSecureSameOrigin(opts.issuer, discovery.registration_endpoint, 'registration_endpoint');
   const res = await fetch(discovery.registration_endpoint, {
     method: 'POST',
+    redirect: 'error',
+    signal,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       redirect_uris: opts.redirectUris,
@@ -149,17 +388,146 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (res.status !== 201 && res.status !== 200) {
-    throw new BkeyLoginError(
-      String(body.error ?? 'registration_failed'),
-      String(body.error_description ?? `registration failed: HTTP ${res.status}`),
+    throw responseError(
+      body,
+      'registration_failed',
+      `registration failed: HTTP ${res.status}`,
     );
   }
+  const errorCode = 'invalid_registration_response';
+  const tokenEndpointAuthMethod =
+    optionalString(body, 'token_endpoint_auth_method', errorCode) ??
+    opts.tokenEndpointAuthMethod ??
+    'client_secret_post';
+  const clientSecret = optionalString(body, 'client_secret', errorCode);
+  const clientSecretExpiresAt = optionalNumber(body, 'client_secret_expires_at', errorCode);
+  if (tokenEndpointAuthMethod !== 'none' && !clientSecret) {
+    throw new BkeyLoginError(errorCode, 'response is missing client_secret');
+  }
+  if (clientSecret && clientSecretExpiresAt === undefined) {
+    throw new BkeyLoginError(errorCode, 'response is missing client_secret_expires_at');
+  }
   return {
-    clientId: String(body.client_id),
-    clientSecret: body.client_secret ? String(body.client_secret) : undefined,
-    redirectUris: (body.redirect_uris as string[]) ?? opts.redirectUris,
-    idTokenSignedResponseAlg: String(body.id_token_signed_response_alg ?? 'EdDSA'),
+    clientId: requiredString(body, 'client_id', errorCode),
+    clientSecret,
+    clientSecretExpiresAt,
+    registrationClientUri: requiredString(
+      body,
+      'registration_client_uri',
+      errorCode,
+    ),
+    registrationAccessToken: requiredString(body, 'registration_access_token', errorCode),
+    clientName: optionalString(body, 'client_name', errorCode),
+    redirectUris: stringArray(body, 'redirect_uris', errorCode, opts.redirectUris),
+    postLogoutRedirectUris: stringArray(
+      body,
+      'post_logout_redirect_uris',
+      errorCode,
+      opts.postLogoutRedirectUris ?? [],
+    ),
+    grantTypes: stringArray(body, 'grant_types', errorCode, ['authorization_code']),
+    responseTypes: stringArray(body, 'response_types', errorCode, ['code']),
+    tokenEndpointAuthMethod,
+    idTokenSignedResponseAlg:
+      optionalString(body, 'id_token_signed_response_alg', errorCode) ?? 'EdDSA',
+    scope: optionalString(body, 'scope', errorCode) ?? 'openid',
   };
+}
+
+/** Read an existing dynamic client registration. */
+export async function getRegisteredClient(
+  opts: RegisteredClientManagementOptions,
+): Promise<RegisteredClientMetadata> {
+  const body = await clientManagementRequest(
+    managementRequestOptions(opts),
+    'client_registration_read',
+    'GET',
+  );
+  return clientMetadataFrom(body);
+}
+
+/** Update the editable metadata for a dynamic client registration. */
+export async function updateRegisteredClient(
+  opts: UpdateRegisteredClientOptions,
+): Promise<RegisteredClientMetadata> {
+  const body = await clientManagementRequest(
+    managementRequestOptions(opts),
+    'client_registration_update',
+    'PATCH',
+    '',
+    {
+      ...(opts.redirectUris !== undefined ? { redirect_uris: opts.redirectUris } : {}),
+      ...(opts.postLogoutRedirectUris !== undefined
+        ? { post_logout_redirect_uris: opts.postLogoutRedirectUris }
+        : {}),
+      ...(opts.clientName !== undefined ? { client_name: opts.clientName } : {}),
+      ...(opts.idTokenSignedResponseAlg !== undefined
+        ? { id_token_signed_response_alg: opts.idTokenSignedResponseAlg }
+        : {}),
+    },
+  );
+  return clientMetadataFrom(body);
+}
+
+/** Rotate a confidential client's secret. The new secret is returned once. */
+export async function rotateClientSecret(
+  opts: RotateClientSecretOptions,
+): Promise<RotatedClientSecret> {
+  const body = await clientManagementRequest(
+    managementRequestOptions(opts),
+    'client_secret_rotation',
+    'POST',
+    '/rotate-secret',
+    { grace_hours: opts.graceHours ?? 24 },
+  );
+  return {
+    clientId: requiredString(body, 'client_id', 'invalid_client_management_response'),
+    clientSecret: requiredString(body, 'client_secret', 'invalid_client_management_response'),
+    clientSecretExpiresAt: requiredNumber(
+      body,
+      'client_secret_expires_at',
+      'invalid_client_management_response',
+    ),
+    oldSecretExpiresAt: (() => {
+      const value = body.old_secret_expires_at;
+      if (value === null) return null;
+      if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) return value;
+      throw new BkeyLoginError(
+        'invalid_client_management_response',
+        'response field old_secret_expires_at must be an ISO timestamp or null',
+      );
+    })(),
+  };
+}
+
+/** Revoke and deprovision a dynamic client registration. */
+export async function deleteRegisteredClient(
+  opts: RegisteredClientManagementOptions,
+): Promise<void> {
+  await clientManagementRequest(
+    managementRequestOptions(opts),
+    'client_registration_delete',
+    'DELETE',
+  );
+}
+
+/** Claim an anonymous registration for the authenticated user or developer. */
+export async function claimRegisteredClient(
+  opts: ClaimRegisteredClientOptions,
+): Promise<RegisteredClientMetadata> {
+  const body = await clientManagementRequest(
+    {
+      issuer: opts.issuer,
+      registrationClientUri: opts.registrationClientUri,
+      accessToken: opts.ownerAccessToken,
+      signal: opts.signal,
+    },
+    'client_registration_claim',
+    'POST',
+    '/claim',
+    { registration_access_token: opts.registrationAccessToken },
+  );
+  return clientMetadataFrom(body);
 }
 
 /**

@@ -110,7 +110,64 @@ Vault values are **end-to-end encrypted** between your process and the user's ph
 Before you can hit most of these endpoints, you need a `client_id` + `client_secret`:
 
 - **For agents** — run `bkey auth setup-agent --save` from a logged-in CLI. BKey pushes a one-time approval to your phone for the scopes you want, then issues the credentials. Details in [CLI authentication](/authentication/device-authorization).
-- **For apps that act as an OIDC client on behalf of other users** — reach out; we'll provision a client for you.
+- **For apps that act as an OIDC client on behalf of other users**: use
+  `registerClient()` from `@bkey/login`. It registers the app without a
+  dashboard account.
+
+An anonymous registration returns a `registrationAccessToken` only once. Store
+it as a sensitive credential, separate from the OAuth client secret. The
+registration token manages the client. The client secret only authenticates the
+client at OAuth endpoints.
+
+`@bkey/login` provides these lifecycle helpers:
+
+- `getRegisteredClient()` reads the current metadata.
+- `updateRegisteredClient()` changes the name and redirect settings.
+- `rotateClientSecret()` creates a new one-time client secret. Old secrets have
+  a 24-hour grace period by default. Set `graceHours: 0` after a leak.
+- `deleteRegisteredClient()` revokes and deprovisions the client.
+- `claimRegisteredClient()` assigns an anonymous client to the authenticated
+  user or developer account and revokes its registration access token.
+
+Each helper uses the `registrationClientUri` returned during registration. Use
+the one-time registration token as `managementAccessToken` for an anonymous
+client. After a claim, use the owner's user or developer dashboard token.
+
+Production can return a management URI on `https://api.bkey.id` while the
+issuer is `https://id.bkey.id`. Use the returned URI without changing its host.
+The SDK accepts this exact BKey host pair and rejects other cross-origin
+management URIs.
+
+If you retain the management credential, you can change redirect URIs and
+rotate a lost or leaked client secret without registering a replacement client.
+
+BKey does not currently rotate the registration token or client secret during
+a metadata read or update. The response types still expose replacement values
+if this behavior changes. Store a returned replacement before the next call.
+
+<Note>
+  `claimRegisteredClient()` does not change an existing management options
+  object. A successful claim revokes the registration access token. Replace
+  `managementAccessToken` with the owner access token before the next read,
+  update, rotation, or deletion request.
+</Note>
+
+```ts
+await claimRegisteredClient({
+  issuer,
+  registrationClientUri,
+  ownerAccessToken,
+  registrationAccessToken,
+});
+
+const ownedManagement = {
+  issuer,
+  registrationClientUri,
+  managementAccessToken: ownerAccessToken,
+};
+
+await getRegisteredClient(ownedManagement);
+```
 
 ## Token format
 
