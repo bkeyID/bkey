@@ -7,8 +7,11 @@ description: Passwordless, biometric sign-in for your website. Works like "Sign 
 
 "Sign in with bkey" is standard OIDC authorization code + PKCE. Your site
 redirects to BKey, the user approves on their phone with their face, and you get
-back a stable identifier for that user. No passwords exist anywhere in the flow,
-so there is nothing to leak, phish, or reset.
+back a stable identifier for that user. No *user* password exists anywhere in the
+flow — nothing to leak, phish, or reset.
+
+Your application still holds long-lived credentials of its own, issued below.
+Those need the usual care.
 
 This is a different flow from [CIBA](/authentication/ciba). Use **Login with
 bkey** to sign a human into your website. Use **CIBA** to get a human to approve
@@ -49,16 +52,61 @@ const { clientId, clientSecret } = await registerClient({
 
 </CodeGroup>
 
-The `client_secret` is returned exactly once. Store it like a password; if you
-lose it, register again.
+### Save both credentials
 
-Two things to get right at registration time, because neither can be changed
-afterwards:
+A successful registration returns **two** secrets, each shown exactly once:
 
-- **`redirect_uris` must match your callback path exactly.** For the Auth.js
-  preset below that is `/api/auth/callback/bkey`.
-- **`post_logout_redirect_uris` is required for sign-out.** Omit it and you will
-  have to register a new client later to add RP-initiated logout.
+```json
+{
+  "client_id": "bkey_client_…",
+  "client_secret": "…",
+  "registration_access_token": "bkey_rat_…",
+  "registration_client_uri": "https://api.bkey.id/oauth/register/bkey_client_…",
+  "redirect_uris": ["https://yourapp.com/api/auth/callback/bkey"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "client_secret_post",
+  "id_token_signed_response_alg": "EdDSA"
+}
+```
+
+They do different jobs, and losing either is expensive:
+
+- **`client_secret`** authenticates your client at the OAuth endpoints.
+- **`registration_access_token`** *manages* the client — it is the only
+  credential that can read, update, rotate, or delete an anonymously registered
+  client. The client secret cannot do any of those.
+
+Store the registration access token like a password, separately from the client
+secret, and keep `registration_client_uri` with it. Discard it and you lose the
+ability to fix a mistyped redirect URI or rotate a leaked secret.
+
+<Note>
+`post_logout_redirect_uris` is persisted even though the registration response
+does not echo it back. Read the client with `getRegisteredClient()` to confirm
+what was stored.
+</Note>
+
+### Changing things later
+
+Provided you kept the registration access token, the client is fully editable —
+see the lifecycle helpers in
+[Integrate BKey](/authentication/integrating-bkey#registering-your-app--agent):
+
+- `updateRegisteredClient()` changes `redirect_uris`,
+  `post_logout_redirect_uris`, and the client name.
+- `rotateClientSecret()` issues a new secret, with a grace window for the old
+  one. Use `graceHours: 0` after a leak.
+- `claimRegisteredClient()` transfers an anonymous client to an account, so it
+  is no longer managed by that one token.
+
+Prefer rotation over re-registration. Registering a replacement leaves the
+original client live with a non-expiring secret, so a leaked credential stays
+valid forever and you accumulate an orphaned client.
+
+One thing worth getting right first time: **`redirect_uris` must match your
+callback path exactly.** For the Auth.js preset below that is
+`/api/auth/callback/bkey`.
 
 BKey accepts `http://` redirect URIs only for loopback addresses
 (`http://localhost:3000/…`), per
@@ -103,6 +151,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    // Keep the id_token — it is required as `id_token_hint` if you use the
+    // RP-Initiated Logout hand-off described below. Deliberately not copied
+    // onto `session`, which the browser can read at /api/auth/session.
+    jwt({ token, account }) {
+      if (account?.id_token) token.idToken = account.id_token as string;
+      return token;
+    },
     session({ session, token }) {
       if (token.sub) session.user = { ...session.user, id: token.sub };
       return session;
@@ -110,6 +165,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 });
 ```
+
+Auth.js also needs `AUTH_SECRET` set — any high-entropy string; it encrypts the
+session cookie.
 
 `session.user.id` is the user's bkey ID. A complete working app is in
 [`examples/typescript/login-with-bkey-nextjs`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/login-with-bkey-nextjs).
@@ -143,17 +201,44 @@ console.log(user.sub); // the user's bkey ID
 verifier, the `id_token` signature against BKey's published JWKS, plus issuer,
 audience, expiry, and `nonce` replay.
 
-You do not need our SDK for any of this — BKey is a standards-compliant OIDC
-provider, and any library that speaks OIDC discovery works. The SDK just saves
-you the wiring.
+You do not need our SDK — BKey is a standards-compliant OIDC provider and any
+OIDC client library can drive this flow. But three things currently have to be
+configured by hand, because discovery does not advertise them:
+
+- **PKCE with `S256` is required** at `/authorize`. `code_challenge_methods_supported`
+  is absent from the discovery document, so a library configured purely from
+  discovery will omit `code_challenge` and fail.
+- **`client_secret_post`, not `client_secret_basic`.** RFC 7591 defaults to
+  Basic, which the registration endpoint rewrites to `client_secret_post` — a
+  client that then sends Basic cannot redeem codes.
+- **`EdDSA`** is the only `id_token` signing algorithm.
+
+Set those three and a generic client works. The SDK just sets them for you.
 
 ## Signing out
 
-Clearing your own session cookie ends the session on *your* site only. The user
-remains signed in at BKey, so the next "Sign in with bkey" can complete without a
-fresh biometric prompt. To end both, redirect to the
+**Clearing your own session ends the sign-in.** BKey is a stateless OP: it keeps
+no browser session or SSO cookie of its own, so there is no "still signed in at
+BKey" state to worry about. Every `/authorize` request triggers a fresh
+biometric approval on the user's phone — a user who signs in again always
+approves again.
+
+That means the ordinary case is simple: destroy your own session and you are
+done.
+
+Two endpoints exist for the cases that aren't ordinary, and it's worth being
+precise about which does what:
+
+**`/oauth/revoke`** invalidates a token. If you are holding an access or refresh
+token and want it to stop working — the user asked you to disconnect, you are
+cleaning up after a leak — this is the call that actually ends something.
+
+**`/oauth/end_session`** implements the
 [RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
-endpoint:
+redirect contract, and only that. It verifies your `id_token_hint`, then
+redirects to a registered `post_logout_redirect_uri`. **It does not revoke
+tokens.** Use it when you want the spec-standard logout hand-off; use
+`/oauth/revoke` when you want tokens dead.
 
 ```typescript
 res.redirect(
@@ -165,7 +250,13 @@ res.redirect(
 ```
 
 `postLogoutRedirectUri` must be one of the `post_logout_redirect_uris` you
-registered, and `id_token_hint` is required for BKey to redirect after logout.
+registered, and `id_token_hint` is required — without it BKey renders a
+confirmation page rather than redirecting.
+
+Note this needs the `id_token` at logout time, which the minimal Auth.js snippet
+above does not retain. See the
+[worked example](https://github.com/bkeyID/bkey/tree/main/examples/typescript/login-with-bkey-nextjs)
+for the `jwt` callback that keeps it server-side.
 
 ## What you get back
 
@@ -175,27 +266,41 @@ identifier for that user.
 ```json
 {
   "iss": "https://id.bkey.id",
-  "sub": "3f2b91c4-7d6a-4e18-9c05-1ab7de40f832",
+  "sub": "…",
   "aud": "your-client-id",
+  "token_type": "id",
   "nonce": "…",
+  "jti": "…",
+  "auth_time": 1786400000,
   "iat": 1786400000,
-  "exp": 1786403600
+  "exp": 1786400900
 }
 ```
 
-Treat `sub` as an opaque string and store it as your user key. No name, no email,
-no phone number is shared — collect anything else you need in your own
-onboarding, on first login.
+**Treat `sub` as an opaque string** and store it as your user key. Do not parse
+it, and do not constrain its length or character set — the format is not part of
+the contract. No name, email, or phone number is shared; collect anything else
+you need in your own onboarding, on first login.
 
-`sub` is stable for a given user, and the same value is issued to every relying
-party.
+One privacy consequence worth stating plainly: `sub` is stable for a user *and*
+the same value is issued to every relying party (`subject_types_supported` is
+`["public"]`). Two sites that both use Login with bkey can therefore determine
+they are talking to the same person. Pairwise subject identifiers, which would
+prevent that, are not currently offered.
 
 ## What the user sees
 
-On **desktop**, the consent page shows a pairing code and a QR code to scan with
-the phone. On **mobile**, it shows a button that opens the bkey app directly.
-Either way the user confirms the on-screen pairing code matches their phone, then
-approves with their face.
+On **mobile**, the consent page shows a button that opens the bkey app directly.
+This is the reliable path today.
+
+On **desktop**, it shows a pairing code and a QR code to scan from the phone.
+Note that the QR currently encodes a custom URL scheme rather than an HTTPS
+Universal Link, so camera scanning may not hand the request to the app — see
+[#52](https://github.com/bkeyID/bkey/issues/52). Approving from the phone works
+regardless.
+
+Either way the user confirms the on-screen pairing code matches the one on their
+phone, then approves with their face.
 
 The pairing code is the anti-phishing step — it binds the browser session to the
 phone, so an attacker who tricks a user into starting a sign-in cannot silently

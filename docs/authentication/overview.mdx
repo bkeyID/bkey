@@ -9,7 +9,7 @@ BKey is a standards-compliant OAuth 2.1 / OIDC / CIBA (RFC 8958) issuer. You can
 
 ## Grant Types
 
-BKey supports four OAuth 2.1 grant types, each designed for a different use case.
+BKey supports several OAuth 2.1 grant types. The four you are most likely to integrate against:
 
 | Grant | Use Case | Who |
 |-------|----------|-----|
@@ -17,6 +17,8 @@ BKey supports four OAuth 2.1 grant types, each designed for a different use case
 | **Client Credentials** | Server-to-server, agent authentication | Machines |
 | **Device Authorization** | CLI login, IoT devices | Humans |
 | **CIBA** | Per-action biometric approval | Humans (triggered by agents) |
+
+Discovery also advertises `refresh_token` and OAuth 2.0 token exchange.
 
 ## Token Format
 
