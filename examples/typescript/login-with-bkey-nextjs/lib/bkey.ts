@@ -44,9 +44,17 @@ const bkey = createBkeyLogin({
 });
 
 /**
- * OIDC RP-Initiated Logout. Clearing our own cookie only ends the session on
- * this site — without this hand-off the user stays signed in at bkey, and the
- * next "Sign in with bkey" can complete with no biometric prompt at all.
+ * OIDC RP-Initiated Logout — the spec-standard logout hand-off.
+ *
+ * Note what this does NOT do. bkey is a stateless OP: it holds no browser
+ * session of its own, and every /authorize triggers a fresh biometric approval.
+ * So clearing this app's cookie already ends the sign-in, and there is no
+ * lingering "still signed in at bkey" state for this call to clean up.
+ *
+ * `end_session` implements the logout redirect contract only — it verifies
+ * `id_token_hint` and redirects to a registered URI. It does not revoke tokens;
+ * `/oauth/revoke` does that. Use this for the standard hand-off, and revoke if
+ * you are holding tokens that should stop working.
  *
  * `postLogoutRedirectUri` must be one of the `post_logout_redirect_uris` the
  * client was registered with — see scripts/register-client.mjs.
