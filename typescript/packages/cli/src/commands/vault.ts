@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { randomBytes, createCipheriv, createHash } from 'node:crypto';
-import { x25519 } from '@noble/curves/ed25519';
+import { x25519 } from '@noble/curves/ed25519.js';
 import { createClient } from '../lib/config.js';
 import { pollStoreRequest } from '@bkey/sdk';
 
@@ -66,7 +66,7 @@ vaultCommand
     }
 
     // E2EE: X25519 ECDH → AES-256-GCM (same pattern as access request E2EE)
-    const ephemeralPrivateKey = x25519.utils.randomPrivateKey();
+    const ephemeralPrivateKey = x25519.utils.randomSecretKey();
     const ephemeralPublicKey = x25519.getPublicKey(ephemeralPrivateKey);
 
     // shared secret = X25519(cliPriv, phonePub) → SHA256 → AES key
