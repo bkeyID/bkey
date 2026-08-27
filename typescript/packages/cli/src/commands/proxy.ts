@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { createDecipheriv, createHash } from 'node:crypto';
-import { x25519 } from '@noble/curves/ed25519';
+import { x25519 } from '@noble/curves/ed25519.js';
 import { createClient } from '../lib/config.js';
 import type { X402AuthorizeResponse, MppAuthorizeResponse } from '@bkey/sdk';
 import { pollAccessRequest } from '@bkey/sdk';
@@ -37,7 +37,7 @@ function parseChainId(network?: string): number {
 // ─── E2EE helpers ───────────────────────────────────────────────────────────
 
 function generateEphemeralKeyPair(): { publicKey: Uint8Array; privateKey: Uint8Array } {
-  const privateKey = x25519.utils.randomPrivateKey();
+  const privateKey = x25519.utils.randomSecretKey();
   const publicKey = x25519.getPublicKey(privateKey);
   return { publicKey, privateKey };
 }

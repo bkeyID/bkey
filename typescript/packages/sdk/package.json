@@ -22,7 +22,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noble/curves": "^1.8.0"
+    "@noble/curves": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

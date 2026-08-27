@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import { createDecipheriv, createHash } from 'node:crypto';
-import { x25519 } from '@noble/curves/ed25519';
+import { x25519 } from '@noble/curves/ed25519.js';
 import { createClient } from '../lib/config.js';
 import { pollAccessRequest } from '@bkey/sdk';
 
@@ -69,7 +69,7 @@ export const wrapCommand = new Command('wrap')
       while ((match = VAULT_PLACEHOLDER.exec(varValue)) !== null) {
         const key = match[0];
         if (!vaultRefs.has(key)) {
-          const privateKey = x25519.utils.randomPrivateKey();
+          const privateKey = x25519.utils.randomSecretKey();
           vaultRefs.set(key, {
             itemName: match[1],
             fieldPath: match[2] ?? 'key',
