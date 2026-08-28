@@ -15,6 +15,8 @@ import {
   type RotateClientSecretOptions,
   type RotatedClientSecret,
   type UpdateRegisteredClientOptions,
+  type UploadedClientLogo,
+  type UploadRegisteredClientLogoOptions,
 } from './types.js';
 
 const DISCOVERY_PATH = '/.well-known/openid-configuration';
@@ -174,6 +176,7 @@ function clientMetadataFrom(body: Record<string, unknown>): RegisteredClientMeta
     clientSecret: optionalString(body, 'client_secret', errorCode),
     clientSecretExpiresAt: optionalNumber(body, 'client_secret_expires_at', errorCode),
     clientName: optionalString(body, 'client_name', errorCode),
+    logoUri: optionalString(body, 'logo_uri', errorCode),
     redirectUris: stringArray(body, 'redirect_uris', errorCode),
     postLogoutRedirectUris: stringArray(body, 'post_logout_redirect_uris', errorCode),
     grantTypes: stringArray(body, 'grant_types', errorCode),
@@ -418,6 +421,7 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
     ),
     registrationAccessToken: requiredString(body, 'registration_access_token', errorCode),
     clientName: optionalString(body, 'client_name', errorCode),
+    logoUri: optionalString(body, 'logo_uri', errorCode),
     redirectUris: stringArray(body, 'redirect_uris', errorCode, opts.redirectUris),
     postLogoutRedirectUris: stringArray(
       body,
@@ -467,6 +471,44 @@ export async function updateRegisteredClient(
     },
   );
   return clientMetadataFrom(body);
+}
+
+/** Upload or replace the PNG logo for a dynamic client registration. */
+export async function uploadRegisteredClientLogo(
+  opts: UploadRegisteredClientLogoOptions,
+): Promise<UploadedClientLogo> {
+  const signal = requestSignal(opts.signal, CLIENT_MANAGEMENT_TIMEOUT_MS);
+  const endpoint = clientManagementEndpoint(
+    opts.issuer,
+    opts.registrationClientUri,
+    '/logo',
+  );
+  const logoBody =
+    opts.logoPng instanceof Uint8Array
+      ? Uint8Array.from(opts.logoPng)
+      : opts.logoPng;
+  const res = await fetch(endpoint, {
+    method: 'PUT',
+    redirect: 'error',
+    signal,
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${opts.managementAccessToken}`,
+      'content-type': 'image/png',
+    },
+    body: logoBody,
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw responseError(
+      body,
+      'client_logo_upload_failed',
+      `client logo upload failed: HTTP ${res.status}`,
+    );
+  }
+  return {
+    logoUri: requiredString(body, 'logo_uri', 'invalid_client_logo_response'),
+  };
 }
 
 /** Rotate a confidential client's secret. The new secret is returned once. */

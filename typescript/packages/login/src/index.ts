@@ -6,6 +6,7 @@ export {
   registerClient,
   rotateClientSecret,
   updateRegisteredClient,
+  uploadRegisteredClientLogo,
 } from './client.js';
 export type { BkeyLogin } from './client.js';
 export { BkeyLoginError } from './types.js';
@@ -23,4 +24,6 @@ export type {
   RotateClientSecretOptions,
   RotatedClientSecret,
   UpdateRegisteredClientOptions,
+  UploadedClientLogo,
+  UploadRegisteredClientLogoOptions,
 } from './types.js';

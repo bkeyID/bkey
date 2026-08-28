@@ -36,6 +36,8 @@ interface ClientMetadata {
   /** Per-client URI for all registration management operations. */
   registrationClientUri: string;
   clientName?: string;
+  /** Public URL for the client logo, when one has been uploaded. */
+  logoUri?: string;
   redirectUris: string[];
   postLogoutRedirectUris: string[];
   grantTypes: string[];
@@ -89,6 +91,17 @@ export interface UpdateRegisteredClientOptions extends RegisteredClientManagemen
   postLogoutRedirectUris?: string[];
   clientName?: string;
   idTokenSignedResponseAlg?: string;
+}
+
+export interface UploadRegisteredClientLogoOptions
+  extends RegisteredClientManagementOptions {
+  /** Raw PNG data. Browser File objects and Node Buffer objects are supported. */
+  logoPng: Blob | Uint8Array;
+}
+
+export interface UploadedClientLogo {
+  /** Public CDN URL for the uploaded client logo. */
+  logoUri: string;
 }
 
 export interface RotateClientSecretOptions extends RegisteredClientManagementOptions {

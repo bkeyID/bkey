@@ -16,6 +16,7 @@ import {
   registerClient,
   rotateClientSecret,
   updateRegisteredClient,
+  uploadRegisteredClientLogo,
 } from './client.js';
 import { BkeyLoginError } from './types.js';
 import { BKEY_DEFAULT_ISSUER, BkeyProvider } from './authjs.js';
@@ -65,7 +66,9 @@ const opState: {
     method: string;
     path: string;
     authorization?: string;
+    contentType?: string;
     body?: Record<string, unknown>;
+    rawBody?: Buffer;
   }>;
 } = {
   nonce: null,
@@ -173,16 +176,25 @@ beforeAll(async () => {
         return res.end();
       }
       let body: Record<string, unknown> | undefined;
+      let rawBody: Buffer | undefined;
       if (req.method === 'PATCH' || req.method === 'POST') {
         let raw = '';
         for await (const chunk of req) raw += chunk;
         body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+      } else if (req.method === 'PUT') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        rawBody = Buffer.concat(chunks);
       }
       opState.managementRequests.push({
         method: req.method ?? '',
         path: url.pathname,
         authorization: req.headers.authorization,
+        contentType: req.headers['content-type'],
         body,
+        rawBody,
       });
       if (opState.rejectManagement) {
         return send(401, {
@@ -200,6 +212,11 @@ beforeAll(async () => {
           client_secret_expires_at: 0,
           old_secret_expires_at:
             body?.grace_hours === 0 ? null : '2026-08-22T12:00:00.000Z',
+        });
+      }
+      if (url.pathname === `${REGISTRATION_CLIENT_URI.replace(ISSUER, '')}/logo`) {
+        return send(200, {
+          logo_uri: `https://cdn.bkey.test/oauth-clients/${MANAGED_CLIENT_ID}/logo.png`,
         });
       }
       if (req.method === 'DELETE') {
@@ -570,6 +587,67 @@ describe('BKey dynamic client lifecycle', () => {
         id_token_signed_response_alg: 'EdDSA',
       },
     });
+  });
+
+  it('uploads raw PNG bytes and returns the public logo URI', async () => {
+    const logoPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    const uploaded = await uploadRegisteredClientLogo({
+      ...management,
+      logoPng,
+    });
+
+    expect(uploaded).toEqual({
+      logoUri: `https://cdn.bkey.test/oauth-clients/${MANAGED_CLIENT_ID}/logo.png`,
+    });
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'PUT',
+      path: `/oauth/register/${MANAGED_CLIENT_ID}/logo`,
+      authorization: 'Bearer bkey_rat_once',
+      contentType: 'image/png',
+      rawBody: logoPng,
+    });
+  });
+
+  it('accepts a browser Blob for a client logo', async () => {
+    const logoPng = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], {
+      type: 'image/png',
+    });
+
+    await expect(
+      uploadRegisteredClientLogo({ ...management, logoPng }),
+    ).resolves.toMatchObject({ logoUri: expect.stringContaining('logo.png') });
+  });
+
+  it('rejects a malformed client logo response', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({}));
+    try {
+      await expect(
+        uploadRegisteredClientLogo({
+          ...management,
+          logoPng: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_client_logo_response' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('reads the logo URI from client metadata', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        client_id: MANAGED_CLIENT_ID,
+        registration_client_uri: REGISTRATION_CLIENT_URI,
+        logo_uri: 'https://cdn.bkey.test/oauth-clients/client/logo.png',
+      }),
+    );
+    try {
+      await expect(getRegisteredClient(management)).resolves.toMatchObject({
+        logoUri: 'https://cdn.bkey.test/oauth-clients/client/logo.png',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('rotates the secret with an explicit immediate-revocation grace period', async () => {

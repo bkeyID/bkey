@@ -21,6 +21,10 @@ Not yet published to npm. Build from source (`typescript/packages/login`) until 
   client-secret expiry, and the registered metadata needed by the SDK.
 - **Registration cancellation:** `registerClient()` accepts an `AbortSignal`;
   discovery and registration retain a five-second SDK deadline.
+- **OAuth client logo upload:** `uploadRegisteredClientLogo()` sends a raw PNG
+  with the existing registration management credential and returns its public
+  CDN URL. Registration and management results now expose `logoUri` when the
+  backend returns one.
 
 ### Fixed
 
