@@ -517,6 +517,35 @@ describe('registerClient (RFC 7591)', () => {
     }
   });
 
+  it('rejects an unsafe logo URI in a registration response', async () => {
+    const issuer = 'https://issuer.example';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(discoveryResponse(issuer))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            client_id: 'unsafe-logo',
+            registration_client_uri: `${issuer}/oauth/register/unsafe-logo`,
+            registration_access_token: 'unsafe-logo-rat',
+            logo_uri: 'javascript:alert(1)',
+          },
+          201,
+        ),
+      );
+    try {
+      await expect(
+        registerClient({
+          issuer,
+          redirectUris: [REDIRECT],
+          tokenEndpointAuthMethod: 'none',
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_registration_response' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('rejects redirects during discovery and registration', async () => {
     opState.redirectDiscovery = true;
     try {
@@ -610,13 +639,36 @@ describe('BKey dynamic client lifecycle', () => {
   });
 
   it('accepts a browser Blob for a client logo', async () => {
-    const logoPng = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], {
+    const logoBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const logoPng = new Blob([logoBytes], {
       type: 'image/png',
     });
 
     await expect(
       uploadRegisteredClientLogo({ ...management, logoPng }),
     ).resolves.toMatchObject({ logoUri: expect.stringContaining('logo.png') });
+    expect(opState.managementRequests.at(-1)).toMatchObject({
+      method: 'PUT',
+      contentType: 'image/png',
+      rawBody: Buffer.from(logoBytes),
+    });
+  });
+
+  it.each([
+    ['an empty byte array', new Uint8Array(0)],
+    ['an oversized byte array', new Uint8Array(256 * 1024 + 1)],
+    ['an oversized Blob', new Blob([new Uint8Array(256 * 1024 + 1)])],
+    ['an invalid runtime type', 'not-png-bytes' as unknown as Uint8Array],
+  ])('rejects %s before calling fetch', async (_description, logoPng) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      await expect(
+        uploadRegisteredClientLogo({ ...management, logoPng }),
+      ).rejects.toMatchObject({ code: 'invalid_client_logo' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('rejects a malformed client logo response', async () => {
@@ -648,6 +700,105 @@ describe('BKey dynamic client lifecycle', () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'data:image/png;base64,AAAA',
+    'http://evil.example/logo.png',
+    'https://user:password@cdn.bkey.test/logo.png',
+  ])('rejects an unsafe logo URI from upload and metadata responses: %s', async (logoUri) => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ logo_uri: logoUri }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          client_id: MANAGED_CLIENT_ID,
+          registration_client_uri: REGISTRATION_CLIENT_URI,
+          logo_uri: logoUri,
+        }),
+      );
+    try {
+      await expect(
+        uploadRegisteredClientLogo({
+          ...management,
+          logoPng: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_client_logo_response' });
+      await expect(getRegisteredClient(management)).rejects.toMatchObject({
+        code: 'invalid_client_management_response',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('returns the parsed HTTPS logo URI instead of the raw response string', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        logo_uri: 'https://cdn.bkey.test/x.png" onerror="alert(1)',
+      }),
+    );
+    try {
+      await expect(
+        uploadRegisteredClientLogo({
+          ...management,
+          logoPng: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        }),
+      ).resolves.toEqual({
+        logoUri: 'https://cdn.bkey.test/x.png%22%20onerror=%22alert(1)',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('applies management redirects and nested errors to logo uploads', async () => {
+    opState.redirectManagement = true;
+    try {
+      await expect(
+        uploadRegisteredClientLogo({
+          ...management,
+          logoPng: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        }),
+      ).rejects.toThrow();
+    } finally {
+      opState.redirectManagement = false;
+    }
+
+    opState.rejectManagement = true;
+    try {
+      await expect(
+        uploadRegisteredClientLogo({
+          ...management,
+          logoPng: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        }),
+      ).rejects.toMatchObject({
+        code: 'unauthenticated',
+        message: 'invalid registration access token',
+      });
+    } finally {
+      opState.rejectManagement = false;
+    }
+  });
+
+  it('rejects unsafe management URIs before a logo upload', async () => {
+    const logoPng = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    await expect(
+      uploadRegisteredClientLogo({
+        ...management,
+        registrationClientUri: `${ISSUER}/oauth/register?client_id=${MANAGED_CLIENT_ID}`,
+        logoPng,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_registration_client_uri' });
+
+    await expect(
+      uploadRegisteredClientLogo({
+        ...management,
+        registrationClientUri: `https://evil.example/oauth/register/${MANAGED_CLIENT_ID}`,
+        logoPng,
+      }),
+    ).rejects.toMatchObject({ code: 'discovery_endpoint_off_origin' });
   });
 
   it('rotates the secret with an explicit immediate-revocation grace period', async () => {

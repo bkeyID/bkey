@@ -95,7 +95,7 @@ export interface UpdateRegisteredClientOptions extends RegisteredClientManagemen
 
 export interface UploadRegisteredClientLogoOptions
   extends RegisteredClientManagementOptions {
-  /** Raw PNG data. Browser File objects and Node Buffer objects are supported. */
+  /** Raw PNG data, from 1 byte through 256 KiB. File and Buffer are supported. */
   logoPng: Blob | Uint8Array;
 }
 

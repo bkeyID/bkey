@@ -24,6 +24,7 @@ const REVOCATION_TIMEOUT_MS = 5_000;
 const DISCOVERY_TIMEOUT_MS = 5_000;
 const REGISTRATION_TIMEOUT_MS = 5_000;
 const CLIENT_MANAGEMENT_TIMEOUT_MS = 5_000;
+const MAX_CLIENT_LOGO_UPLOAD_BYTES = 256 * 1024;
 // Production constructs registration_client_uri from the API audience even
 // though its OIDC issuer is id.bkey.id. Keep this exception exact so a caller
 // cannot send a management bearer token to an arbitrary cross-origin host.
@@ -163,6 +164,56 @@ function requiredNumber(
   return value;
 }
 
+function clientLogoUriFrom(
+  body: Record<string, unknown>,
+  errorCode: string,
+  required = false,
+): string | undefined {
+  const value = required
+    ? requiredString(body, 'logo_uri', errorCode)
+    : optionalString(body, 'logo_uri', errorCode);
+  if (value === undefined) return undefined;
+
+  let url: URL;
+  try {
+    url = parseUrl(value, 'logo_uri');
+  } catch {
+    throw new BkeyLoginError(
+      errorCode,
+      'response field logo_uri must be a valid URL without embedded credentials',
+    );
+  }
+  if (
+    url.protocol !== 'https:' &&
+    !(url.protocol === 'http:' && isLoopbackHostname(url.hostname))
+  ) {
+    throw new BkeyLoginError(
+      errorCode,
+      'response field logo_uri must use HTTPS (HTTP is allowed only for loopback development)',
+    );
+  }
+  return url.href;
+}
+
+function checkedClientLogoBody(logoPng: unknown): Blob | Uint8Array<ArrayBuffer> {
+  const isBlob = typeof Blob !== 'undefined' && logoPng instanceof Blob;
+  if (!(logoPng instanceof Uint8Array) && !isBlob) {
+    throw new BkeyLoginError(
+      'invalid_client_logo',
+      'logoPng must be a Blob or Uint8Array containing raw PNG data',
+    );
+  }
+
+  const size = logoPng instanceof Uint8Array ? logoPng.byteLength : logoPng.size;
+  if (size < 1 || size > MAX_CLIENT_LOGO_UPLOAD_BYTES) {
+    throw new BkeyLoginError(
+      'invalid_client_logo',
+      `logoPng must contain 1 to ${MAX_CLIENT_LOGO_UPLOAD_BYTES} bytes`,
+    );
+  }
+  return logoPng instanceof Uint8Array ? Uint8Array.from(logoPng) : logoPng;
+}
+
 function clientMetadataFrom(body: Record<string, unknown>): RegisteredClientMetadata {
   const errorCode = 'invalid_client_management_response';
   return {
@@ -176,7 +227,7 @@ function clientMetadataFrom(body: Record<string, unknown>): RegisteredClientMeta
     clientSecret: optionalString(body, 'client_secret', errorCode),
     clientSecretExpiresAt: optionalNumber(body, 'client_secret_expires_at', errorCode),
     clientName: optionalString(body, 'client_name', errorCode),
-    logoUri: optionalString(body, 'logo_uri', errorCode),
+    logoUri: clientLogoUriFrom(body, errorCode),
     redirectUris: stringArray(body, 'redirect_uris', errorCode),
     postLogoutRedirectUris: stringArray(body, 'post_logout_redirect_uris', errorCode),
     grantTypes: stringArray(body, 'grant_types', errorCode),
@@ -263,9 +314,12 @@ async function clientManagementRequest(
     signal?: AbortSignal;
   },
   operation: string,
-  method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
+  method: 'GET' | 'PATCH' | 'POST' | 'PUT' | 'DELETE',
   suffix = '',
-  requestBody?: Record<string, unknown>,
+  requestBody?: {
+    contentType: 'application/json' | 'image/png';
+    body: BodyInit;
+  },
 ): Promise<Record<string, unknown>> {
   const signal = requestSignal(opts.signal, CLIENT_MANAGEMENT_TIMEOUT_MS);
   const endpoint = clientManagementEndpoint(opts.issuer, opts.registrationClientUri, suffix);
@@ -276,9 +330,9 @@ async function clientManagementRequest(
     headers: {
       accept: 'application/json',
       authorization: `Bearer ${opts.accessToken}`,
-      ...(requestBody ? { 'content-type': 'application/json' } : {}),
+      ...(requestBody ? { 'content-type': requestBody.contentType } : {}),
     },
-    ...(requestBody ? { body: JSON.stringify(requestBody) } : {}),
+    ...(requestBody ? { body: requestBody.body } : {}),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
@@ -421,7 +475,7 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
     ),
     registrationAccessToken: requiredString(body, 'registration_access_token', errorCode),
     clientName: optionalString(body, 'client_name', errorCode),
-    logoUri: optionalString(body, 'logo_uri', errorCode),
+    logoUri: clientLogoUriFrom(body, errorCode),
     redirectUris: stringArray(body, 'redirect_uris', errorCode, opts.redirectUris),
     postLogoutRedirectUris: stringArray(
       body,
@@ -460,14 +514,17 @@ export async function updateRegisteredClient(
     'PATCH',
     '',
     {
-      ...(opts.redirectUris !== undefined ? { redirect_uris: opts.redirectUris } : {}),
-      ...(opts.postLogoutRedirectUris !== undefined
-        ? { post_logout_redirect_uris: opts.postLogoutRedirectUris }
-        : {}),
-      ...(opts.clientName !== undefined ? { client_name: opts.clientName } : {}),
-      ...(opts.idTokenSignedResponseAlg !== undefined
-        ? { id_token_signed_response_alg: opts.idTokenSignedResponseAlg }
-        : {}),
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...(opts.redirectUris !== undefined ? { redirect_uris: opts.redirectUris } : {}),
+        ...(opts.postLogoutRedirectUris !== undefined
+          ? { post_logout_redirect_uris: opts.postLogoutRedirectUris }
+          : {}),
+        ...(opts.clientName !== undefined ? { client_name: opts.clientName } : {}),
+        ...(opts.idTokenSignedResponseAlg !== undefined
+          ? { id_token_signed_response_alg: opts.idTokenSignedResponseAlg }
+          : {}),
+      }),
     },
   );
   return clientMetadataFrom(body);
@@ -477,37 +534,16 @@ export async function updateRegisteredClient(
 export async function uploadRegisteredClientLogo(
   opts: UploadRegisteredClientLogoOptions,
 ): Promise<UploadedClientLogo> {
-  const signal = requestSignal(opts.signal, CLIENT_MANAGEMENT_TIMEOUT_MS);
-  const endpoint = clientManagementEndpoint(
-    opts.issuer,
-    opts.registrationClientUri,
+  const logoPng = checkedClientLogoBody(opts.logoPng);
+  const body = await clientManagementRequest(
+    managementRequestOptions(opts),
+    'client_logo_upload',
+    'PUT',
     '/logo',
+    { contentType: 'image/png', body: logoPng },
   );
-  const logoBody =
-    opts.logoPng instanceof Uint8Array
-      ? Uint8Array.from(opts.logoPng)
-      : opts.logoPng;
-  const res = await fetch(endpoint, {
-    method: 'PUT',
-    redirect: 'error',
-    signal,
-    headers: {
-      accept: 'application/json',
-      authorization: `Bearer ${opts.managementAccessToken}`,
-      'content-type': 'image/png',
-    },
-    body: logoBody,
-  });
-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok) {
-    throw responseError(
-      body,
-      'client_logo_upload_failed',
-      `client logo upload failed: HTTP ${res.status}`,
-    );
-  }
   return {
-    logoUri: requiredString(body, 'logo_uri', 'invalid_client_logo_response'),
+    logoUri: clientLogoUriFrom(body, 'invalid_client_logo_response', true)!,
   };
 }
 
@@ -520,7 +556,10 @@ export async function rotateClientSecret(
     'client_secret_rotation',
     'POST',
     '/rotate-secret',
-    { grace_hours: opts.graceHours ?? 24 },
+    {
+      contentType: 'application/json',
+      body: JSON.stringify({ grace_hours: opts.graceHours ?? 24 }),
+    },
   );
   return {
     clientId: requiredString(body, 'client_id', 'invalid_client_management_response'),
@@ -567,7 +606,10 @@ export async function claimRegisteredClient(
     'client_registration_claim',
     'POST',
     '/claim',
-    { registration_access_token: opts.registrationAccessToken },
+    {
+      contentType: 'application/json',
+      body: JSON.stringify({ registration_access_token: opts.registrationAccessToken }),
+    },
   );
   return clientMetadataFrom(body);
 }

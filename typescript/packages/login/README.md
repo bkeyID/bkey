@@ -87,9 +87,9 @@ const rotated = await rotateClientSecret({
 
 In a browser, `logoPng` can also be a `Blob` or `File`. The helper sends raw
 PNG bytes. Do not base64-encode the file or use multipart form data. The
-backend accepts files up to 256 KiB, rejects invalid or animated PNG files,
-and returns the public CDN URL as `logoUri`. Later client metadata reads also
-include `logoUri`.
+helper rejects empty files and files over 256 KiB before it sends a request.
+The backend rejects invalid or animated PNG files and returns the public CDN
+URL as `logoUri`. Later client metadata reads also include `logoUri`.
 
 Logo upload is a separate operation because client registration and R2 upload
 are not one transaction. Always store the registration result first. If an
