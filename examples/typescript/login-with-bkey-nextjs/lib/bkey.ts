@@ -13,8 +13,8 @@ export const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
  * NODE_ENV. Those agree in the two common cases (HTTP dev, HTTPS prod) and
  * disagree in a third that is easy to hit: a development server behind an HTTPS
  * tunnel, which is what you need in order to test on a physical phone. Guessing
- * wrong makes getToken return `null` with no error, so sign-out silently
- * degrades to clearing the local cookie only.
+ * wrong makes getToken return `null` with no error, so sign-out skips the
+ * end_session hand-off.
  */
 const USE_SECURE_COOKIES = new URL(APP_URL).protocol === 'https:';
 const SESSION_COOKIE = `${USE_SECURE_COOKIES ? '__Secure-' : ''}authjs.session-token`;
