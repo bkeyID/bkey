@@ -52,6 +52,7 @@ import {
   getRegisteredClient,
   rotateClientSecret,
   updateRegisteredClient,
+  uploadRegisteredClientLogo,
 } from '@bkey/login';
 
 const management = {
@@ -61,6 +62,14 @@ const management = {
 };
 
 const current = await getRegisteredClient(management);
+
+// Upload or replace the client logo after registration.
+// Node Buffer extends Uint8Array, so readFile output works directly.
+const { readFile } = await import('node:fs/promises');
+const { logoUri } = await uploadRegisteredClientLogo({
+  ...management,
+  logoPng: await readFile('./logo.png'),
+});
 
 await updateRegisteredClient({
   ...management,
@@ -75,6 +84,16 @@ const rotated = await rotateClientSecret({
 });
 // Store rotated.clientSecret. It is returned only once.
 ```
+
+In a browser, `logoPng` can also be a `Blob` or `File`. The helper sends raw
+PNG bytes. Do not base64-encode the file or use multipart form data. The
+helper rejects empty files and files over 256 KiB before it sends a request.
+The backend rejects invalid or animated PNG files and returns the public CDN
+URL as `logoUri`. Later client metadata reads also include `logoUri`.
+
+Logo upload is a separate operation because client registration and R2 upload
+are not one transaction. Always store the registration result first. If an
+upload fails, keep the client credentials and retry only the upload.
 
 `graceHours` defaults to `24`. Set it to `0` to stop old secrets immediately
 after a leak.
