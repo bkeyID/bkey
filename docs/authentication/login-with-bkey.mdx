@@ -1,0 +1,338 @@
+---
+title: Login with bkey
+description: Passwordless, biometric sign-in for your website. Works like "Sign in with Google", except the user approves on their phone with their face — and no password ever exists.
+---
+
+# Login with bkey
+
+"Sign in with bkey" is standard OIDC authorization code + PKCE. Your site
+redirects to BKey, the user approves on their phone with their face, and you get
+back a stable identifier for that user. No *user* password exists anywhere in the
+flow — nothing to leak, phish, or reset.
+
+Your application still holds long-lived credentials of its own, issued below.
+Those need the usual care.
+
+This is a different flow from [CIBA](/authentication/ciba). Use **Login with
+bkey** to sign a human into your website. Use **CIBA** to get a human to approve
+a specific action your backend is about to take.
+
+## Get credentials — self-serve, no account needed
+
+Client registration is [RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)
+dynamic registration. No dashboard, no account, no sales call: one request gives
+you a `client_id` and `client_secret`.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://id.bkey.id/oauth/register \
+  -H 'content-type: application/json' \
+  -d '{
+    "redirect_uris": ["https://yourapp.com/api/auth/callback/bkey"],
+    "post_logout_redirect_uris": ["https://yourapp.com/"],
+    "client_name": "Your App",
+    "token_endpoint_auth_method": "client_secret_post",
+    "grant_types": ["authorization_code"],
+    "response_types": ["code"],
+    "scope": "openid"
+  }'
+```
+
+```typescript TypeScript
+import { registerClient } from '@bkey/login';
+
+const {
+  clientId,
+  clientSecret,
+  registrationClientUri,
+  registrationAccessToken,
+} = await registerClient({
+  issuer: 'https://id.bkey.id',
+  redirectUris: ['https://yourapp.com/api/auth/callback/bkey'],
+  postLogoutRedirectUris: ['https://yourapp.com/'],
+  clientName: 'Your App',
+});
+```
+
+</CodeGroup>
+
+### Save both credentials
+
+A successful registration returns **two** secrets, each shown exactly once:
+
+```json
+{
+  "client_id": "bkey_client_…",
+  "client_secret": "…",
+  "registration_access_token": "bkey_rat_…",
+  "registration_client_uri": "https://api.bkey.id/oauth/register/bkey_client_…",
+  "redirect_uris": ["https://yourapp.com/api/auth/callback/bkey"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "client_secret_post",
+  "id_token_signed_response_alg": "EdDSA"
+}
+```
+
+They do different jobs, and losing either is expensive:
+
+- **`client_secret`** authenticates your client at the OAuth endpoints.
+- **`registration_access_token`** *manages* the client — it is the only
+  credential that can read, update, rotate, or delete an anonymously registered
+  client. The client secret cannot do any of those.
+
+Store the registration access token like a password, separately from the client
+secret, and keep `registration_client_uri` with it. Discard it and you lose the
+ability to fix a mistyped redirect URI or rotate a leaked secret.
+
+<Note>
+`post_logout_redirect_uris` is persisted even though the registration response
+does not echo it back. Read the client with `getRegisteredClient()` to confirm
+what was stored.
+</Note>
+
+### Changing things later
+
+Provided you kept the registration access token, the client is fully editable —
+see the lifecycle helpers in
+[Integrate BKey](/authentication/integrating-bkey#registering-your-app--agent):
+
+- `updateRegisteredClient()` changes `redirect_uris`,
+  `post_logout_redirect_uris`, and the client name.
+- `rotateClientSecret()` issues a new secret, with a grace window for the old
+  one. Use `graceHours: 0` after a leak.
+- `claimRegisteredClient()` transfers an anonymous client to an account, so it
+  is no longer managed by that one token.
+
+Prefer rotation over re-registration. Registering a replacement leaves the
+original client live with a non-expiring secret, so a leaked credential stays
+valid forever and you accumulate an orphaned client.
+
+One thing worth getting right first time: **`redirect_uris` must match your
+callback path exactly.** For the Auth.js preset below that is
+`/api/auth/callback/bkey`.
+
+BKey accepts `http://` redirect URIs only for loopback addresses
+(`http://localhost:3000/…`), per
+[RFC 8252](https://www.rfc-editor.org/rfc/rfc8252#section-7.3). Every other
+origin must be HTTPS — including a LAN address, so testing against a phone on
+your local network needs an HTTPS tunnel.
+
+## Use the issuer `https://id.bkey.id`
+
+<Warning>
+Use `https://id.bkey.id` as your issuer. `auth.bkey.id` and `api.bkey.id` also
+answer OIDC discovery, but the document they return declares
+`"issuer": "https://id.bkey.id"`. OIDC Discovery §4.3 requires the document's
+issuer to equal the one you configured, so pointing a client at either alias
+fails with `issuer_mismatch` before the first redirect.
+
+Register and authenticate against the **same** issuer. A client registered on
+production is unknown to staging, and vice versa.
+</Warning>
+
+| Environment | Issuer | Approve with |
+| --- | --- | --- |
+| Production | `https://id.bkey.id` | the bkey app from the App Store |
+| Staging | `https://staging-api.bkey.id` | a staging-enrolled device |
+
+## Next.js — the five-line version
+
+[`@bkey/login`](https://github.com/bkeyID/bkey/tree/main/typescript/packages/login)
+ships an [Auth.js](https://authjs.dev) provider preset. Auth.js handles
+discovery, PKCE, `state`, `nonce`, and EdDSA `id_token` verification.
+
+```typescript auth.ts
+import NextAuth from 'next-auth';
+import { BkeyProvider } from '@bkey/login/authjs';
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  providers: [
+    BkeyProvider({
+      clientId: process.env.BKEY_CLIENT_ID!,
+      clientSecret: process.env.BKEY_CLIENT_SECRET!,
+      issuer: 'https://id.bkey.id',
+    }),
+  ],
+  callbacks: {
+    // Keep the id_token — it is required as `id_token_hint` if you use the
+    // RP-Initiated Logout hand-off described below. Deliberately not copied
+    // onto `session`, which the browser can read at /api/auth/session.
+    jwt({ token, account }) {
+      if (account?.id_token) token.idToken = account.id_token as string;
+      return token;
+    },
+    session({ session, token }) {
+      if (token.sub) session.user = { ...session.user, id: token.sub };
+      return session;
+    },
+  },
+});
+```
+
+Auth.js also needs `AUTH_SECRET` set — any high-entropy string; it encrypts the
+session cookie.
+
+`session.user.id` is the user's bkey ID. A complete working app is in
+[`examples/typescript/login-with-bkey-nextjs`](https://github.com/bkeyID/bkey/tree/main/examples/typescript/login-with-bkey-nextjs).
+
+## Any framework — the core helpers
+
+```typescript
+import { createBkeyLogin } from '@bkey/login';
+
+const bkey = createBkeyLogin({
+  issuer: 'https://id.bkey.id',
+  clientId: process.env.BKEY_CLIENT_ID!,
+  clientSecret: process.env.BKEY_CLIENT_SECRET,
+  redirectUri: 'https://yourapp.com/api/auth/callback/bkey',
+});
+
+// 1. Start sign-in. Persist state/nonce/codeVerifier in the session.
+const request = await bkey.authorizationUrl();
+res.redirect(request.url);
+
+// 2. On your callback route:
+const user = await bkey.handleCallback(req.url, {
+  state: saved.state,
+  nonce: saved.nonce,
+  codeVerifier: saved.codeVerifier,
+});
+console.log(user.sub); // the user's bkey ID
+```
+
+`handleCallback` validates everything before returning: `state` (CSRF), the PKCE
+verifier, the `id_token` signature against BKey's published JWKS, plus issuer,
+audience, expiry, and `nonce` replay.
+
+You do not need our SDK — BKey is a standards-compliant OIDC provider and any
+OIDC client library can drive this flow. Discovery already advertises
+`token_endpoint_auth_methods_supported` (`none`, `client_secret_post`) and
+`id_token_signing_alg_values_supported` (`EdDSA`). One required setting is not
+in the document:
+
+- **PKCE with `S256` is required** at `/authorize`.
+  `code_challenge_methods_supported` is absent, so a library configured purely
+  from discovery will omit `code_challenge` and fail
+  ([#50](https://github.com/bkeyID/bkey/issues/50)).
+
+A separate registration-time footgun: RFC 7591 defaults to `client_secret_basic`,
+which the registration endpoint rewrites to `client_secret_post`. A client that
+then sends Basic cannot redeem codes. Send
+`token_endpoint_auth_method: "client_secret_post"` at registration (as in the
+request above).
+
+The SDK sets both of those for you.
+
+## Signing out
+
+**Clearing your own session ends the sign-in.** BKey is a stateless OP: it keeps
+no browser session or SSO cookie of its own, so there is no "still signed in at
+BKey" state to worry about. Every `/authorize` request triggers a fresh
+biometric approval on the user's phone — a user who signs in again always
+approves again.
+
+That means the ordinary case is simple: destroy your own session and you are
+done.
+
+Two endpoints exist for the cases that aren't ordinary, and it's worth being
+precise about which does what:
+
+**`/oauth/revoke`** invalidates a token. If you are holding an access or refresh
+token and want it to stop working — the user asked you to disconnect, you are
+cleaning up after a leak — this is the call that actually ends something.
+
+**`/oauth/end_session`** implements the
+[RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
+redirect contract, and only that. It verifies your `id_token_hint`, then
+redirects to a registered `post_logout_redirect_uri`. **It does not revoke
+tokens.** Use it when you want the spec-standard logout hand-off; use
+`/oauth/revoke` when you want tokens dead.
+
+```typescript
+res.redirect(
+  await bkey.endSessionUrl({
+    idToken: user.idToken,
+    postLogoutRedirectUri: 'https://yourapp.com/',
+  }),
+);
+```
+
+`postLogoutRedirectUri` must be one of the `post_logout_redirect_uris` you
+registered, and `id_token_hint` is required — without it BKey renders a
+confirmation page rather than redirecting.
+
+The Auth.js snippet above keeps that `id_token` on the jwt token as `idToken`,
+not on `session` (which the browser can read at `/api/auth/session`).
+
+## What you get back
+
+The `id_token` carries exactly one identity claim: `sub`, a stable pseudonymous
+identifier for that user.
+
+```json
+{
+  "iss": "https://id.bkey.id",
+  "sub": "…",
+  "aud": "your-client-id",
+  "token_type": "id",
+  "nonce": "…",
+  "jti": "…",
+  "auth_time": 1786400000,
+  "iat": 1786400000,
+  "exp": 1786400900
+}
+```
+
+**Treat `sub` as an opaque string** and store it as your user key. Do not parse
+it, and do not constrain its length or character set — the format is not part of
+the contract. No name, email, or phone number is shared; collect anything else
+you need in your own onboarding, on first login.
+
+One privacy consequence worth stating plainly: `sub` is stable for a user *and*
+the same value is issued to every relying party (`subject_types_supported` is
+`["public"]`). Two sites that both use Login with bkey can therefore determine
+they are talking to the same person. Pairwise subject identifiers, which would
+prevent that, are not currently offered.
+
+## What the user sees
+
+On **mobile**, the consent page shows a button that opens the bkey app directly.
+This is the reliable path today.
+
+On **desktop**, it shows a pairing code and a QR code to scan from the phone.
+Note that the QR currently encodes a custom URL scheme rather than an HTTPS
+Universal Link, so camera scanning may not hand the request to the app — see
+[#52](https://github.com/bkeyID/bkey/issues/52). Approving from the phone works
+regardless.
+
+Either way the user confirms the on-screen pairing code matches the one on their
+phone, then approves with their face.
+
+Matching the pairing code proves the phone and this browser are in the same
+ceremony, so an attacker who starts a sign-in on their own machine cannot
+complete it with someone else's approval. It does not prove which site is
+requesting the sign-in — a proxying page can display the genuine code and the
+comparison still succeeds.
+
+## Installing the SDK
+
+`@bkey/login` is not yet published to npm. Until it is, build it from the
+repository:
+
+```bash
+git clone https://github.com/bkeyID/bkey
+cd bkey/typescript && pnpm install && pnpm --filter @bkey/login build
+```
+
+Then depend on it by path, or `npm pack` it into a tarball your app can install.
+The core helpers are a thin wrapper over standard OIDC, so you can also integrate
+with any OIDC client library and skip the SDK entirely.
+
+## See also
+
+- [Authentication overview](/authentication/overview) — every grant type at a glance
+- [CIBA](/authentication/ciba) — approving a specific action, rather than signing in
+- [OIDC discovery](/api-reference/oauth/oidc-discovery) — the discovery document
+- [Token endpoint](/api-reference/oauth/token-endpoint) — exchanging the code
