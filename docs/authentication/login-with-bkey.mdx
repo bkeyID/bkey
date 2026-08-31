@@ -42,7 +42,12 @@ curl -X POST https://id.bkey.id/oauth/register \
 ```typescript TypeScript
 import { registerClient } from '@bkey/login';
 
-const { clientId, clientSecret } = await registerClient({
+const {
+  clientId,
+  clientSecret,
+  registrationClientUri,
+  registrationAccessToken,
+} = await registerClient({
   issuer: 'https://id.bkey.id',
   redirectUris: ['https://yourapp.com/api/auth/callback/bkey'],
   postLogoutRedirectUris: ['https://yourapp.com/'],
@@ -202,18 +207,23 @@ verifier, the `id_token` signature against BKey's published JWKS, plus issuer,
 audience, expiry, and `nonce` replay.
 
 You do not need our SDK — BKey is a standards-compliant OIDC provider and any
-OIDC client library can drive this flow. But three things currently have to be
-configured by hand, because discovery does not advertise them:
+OIDC client library can drive this flow. Discovery already advertises
+`token_endpoint_auth_methods_supported` (`none`, `client_secret_post`) and
+`id_token_signing_alg_values_supported` (`EdDSA`). One required setting is not
+in the document:
 
-- **PKCE with `S256` is required** at `/authorize`. `code_challenge_methods_supported`
-  is absent from the discovery document, so a library configured purely from
-  discovery will omit `code_challenge` and fail.
-- **`client_secret_post`, not `client_secret_basic`.** RFC 7591 defaults to
-  Basic, which the registration endpoint rewrites to `client_secret_post` — a
-  client that then sends Basic cannot redeem codes.
-- **`EdDSA`** is the only `id_token` signing algorithm.
+- **PKCE with `S256` is required** at `/authorize`.
+  `code_challenge_methods_supported` is absent, so a library configured purely
+  from discovery will omit `code_challenge` and fail
+  ([#50](https://github.com/bkeyID/bkey/issues/50)).
 
-Set those three and a generic client works. The SDK just sets them for you.
+A separate registration-time footgun: RFC 7591 defaults to `client_secret_basic`,
+which the registration endpoint rewrites to `client_secret_post`. A client that
+then sends Basic cannot redeem codes. Send
+`token_endpoint_auth_method: "client_secret_post"` at registration (as in the
+request above).
+
+The SDK sets both of those for you.
 
 ## Signing out
 
@@ -253,10 +263,8 @@ res.redirect(
 registered, and `id_token_hint` is required — without it BKey renders a
 confirmation page rather than redirecting.
 
-Note this needs the `id_token` at logout time, which the minimal Auth.js snippet
-above does not retain. See the
-[worked example](https://github.com/bkeyID/bkey/tree/main/examples/typescript/login-with-bkey-nextjs)
-for the `jwt` callback that keeps it server-side.
+The Auth.js snippet above keeps that `id_token` on the jwt token as `idToken`,
+not on `session` (which the browser can read at `/api/auth/session`).
 
 ## What you get back
 
@@ -302,9 +310,11 @@ regardless.
 Either way the user confirms the on-screen pairing code matches the one on their
 phone, then approves with their face.
 
-The pairing code is the anti-phishing step — it binds the browser session to the
-phone, so an attacker who tricks a user into starting a sign-in cannot silently
-complete it.
+Matching the pairing code proves the phone and this browser are in the same
+ceremony, so an attacker who starts a sign-in on their own machine cannot
+complete it with someone else's approval. It does not prove which site is
+requesting the sign-in — a proxying page can display the genuine code and the
+comparison still succeeds.
 
 ## Installing the SDK
 
