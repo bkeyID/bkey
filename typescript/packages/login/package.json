@@ -38,6 +38,9 @@
     "directory": "typescript/packages/login"
   },
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "keywords": [
     "bkey",
     "oidc",

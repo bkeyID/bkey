@@ -11,6 +11,9 @@ jobs:
   publish-sdk:
     name: Publish @bkey/sdk to npm
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     if: startsWith(github.event.release.tag_name, 'sdk-v')
     defaults:
       run:
@@ -26,15 +29,31 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
+      - name: Tag version must match package.json
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="$TAG"
+          tag_version="${tag#sdk-v}"
+          pkg_version=$(node -p "require('./packages/sdk/package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag $tag implies version $tag_version but packages/sdk/package.json is $pkg_version" >&2
+            exit 1
+          fi
+          echo "@bkey/sdk $pkg_version matches tag $tag"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm --filter @bkey/sdk publish --access public --no-git-checks
+      - run: pnpm --filter @bkey/sdk test
+      - run: pnpm --filter @bkey/sdk publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-cli:
     name: Publish @bkey/cli to npm
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     if: startsWith(github.event.release.tag_name, 'cli-v')
     defaults:
       run:
@@ -50,15 +69,30 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
+      - name: Tag version must match package.json
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="$TAG"
+          tag_version="${tag#cli-v}"
+          pkg_version=$(node -p "require('./packages/cli/package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag $tag implies version $tag_version but packages/cli/package.json is $pkg_version" >&2
+            exit 1
+          fi
+          echo "@bkey/cli $pkg_version matches tag $tag"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm --filter @bkey/cli publish --access public --no-git-checks
+      - run: pnpm --filter @bkey/cli publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-node:
     name: Publish @bkey/node to npm
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     if: startsWith(github.event.release.tag_name, 'node-v')
     defaults:
       run:
@@ -74,16 +108,31 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
+      - name: Tag version must match package.json
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="$TAG"
+          tag_version="${tag#node-v}"
+          pkg_version=$(node -p "require('./packages/node/package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag $tag implies version $tag_version but packages/node/package.json is $pkg_version" >&2
+            exit 1
+          fi
+          echo "@bkey/node $pkg_version matches tag $tag"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm --filter @bkey/node test
-      - run: pnpm --filter @bkey/node publish --access public --no-git-checks
+      - run: pnpm --filter @bkey/node publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-login:
     name: Publish @bkey/login to npm
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     if: startsWith(github.event.release.tag_name, 'login-v')
     defaults:
       run:
@@ -99,9 +148,21 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
+      - name: Tag version must match package.json
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="$TAG"
+          tag_version="${tag#login-v}"
+          pkg_version=$(node -p "require('./packages/login/package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag $tag implies version $tag_version but packages/login/package.json is $pkg_version" >&2
+            exit 1
+          fi
+          echo "@bkey/login $pkg_version matches tag $tag"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm --filter @bkey/login test
-      - run: pnpm --filter @bkey/login publish --access public --no-git-checks
+      - run: pnpm --filter @bkey/login publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

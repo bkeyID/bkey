@@ -48,6 +48,9 @@ Not yet published to npm. Build from source (`typescript/packages/login`) until 
   `jwtVerify(..., { algorithms: ['EdDSA'], requiredClaims, clockTolerance })`
   all behave identically under v6. Verified against a live JWKS endpoint in
   the package's own test suite.
+- **Declared a Node floor (`engines.node: >=20`)**, matching `@bkey/node`. The
+  package had no `engines` field, so npm gave installers no signal at all
+  before the first publish.
 - **Registration response validation:** `registerClient()` now requires
   `client_id`, `registration_client_uri`, and the anonymous management token.
   Confidential registrations must also include the issued client secret and
