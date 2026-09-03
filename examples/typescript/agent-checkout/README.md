@@ -44,7 +44,7 @@ Copy `.env.example` to `.env` and fill in:
 | `BKEY_USER_DID` | The user who will get the approval push. In the BKey mobile app: Settings → Developer → Copy DID. |
 | `MERCHANT_NAME` / `MERCHANT_DOMAIN` / `MERCHANT_CHECKOUT_URL` | The merchant identity shown on the user's phone. In production these come from your merchant integration; the defaults in `.env.example` are placeholders. |
 
-Run it (Node 20+ has native `--env-file`, no dotenv needed):
+Run it (Node 20.19+ has native `--env-file`, no dotenv needed):
 
 ```bash
 node --env-file=.env dist/index.js

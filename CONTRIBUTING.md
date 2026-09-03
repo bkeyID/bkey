@@ -6,10 +6,14 @@ Thank you for your interest in contributing to BKey.
 
 ### TypeScript packages
 
+Requires **Node.js 22.12+** — that is `@bkey/cli`'s floor, and building the
+workspace builds the CLI. CI runs the TypeScript job on Node 22 and 24.
+
 ```bash
 cd typescript
 pnpm install
 pnpm build
+node scripts/check-engines.mjs   # asserts declared engines match real dep floors
 ```
 
 ### Python package
