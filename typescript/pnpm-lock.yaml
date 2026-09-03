@@ -26,9 +26,6 @@ importers:
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
-      chalk:
-        specifier: ^5.4.1
-        version: 5.6.2
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -52,8 +49,8 @@ importers:
   packages/login:
     dependencies:
       jose:
-        specifier: ~5.9.0
-        version: 5.9.6
+        specifier: ^6.2.10
+        version: 6.2.10
     devDependencies:
       '@types/node':
         specifier: ^26.4.0
@@ -68,8 +65,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       jose:
-        specifier: ~5.9.0
-        version: 5.9.6
+        specifier: ^6.2.10
+        version: 6.2.10
     devDependencies:
       '@types/express':
         specifier: ^5.0.0
@@ -689,10 +686,6 @@ packages:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
 
-  chalk@5.6.2:
-    resolution: {integrity: sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA==}
-    engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
-
   cliui@6.0.0:
     resolution: {integrity: sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==}
 
@@ -924,8 +917,8 @@ packages:
   is-promise@4.0.0:
     resolution: {integrity: sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ==}
 
-  jose@5.9.6:
-    resolution: {integrity: sha512-AMlnetc9+CV9asI19zHmrgS/WYsWUwCn2R7RzlbJWD7F9eWYUTGyBmU9o6PxngtLGOiDGPRu+Uc4fhKzbpteZQ==}
+  jose@6.2.10:
+    resolution: {integrity: sha512-iiW7J9qRFlGxvCOIBDBDxFePQSn7ZMAnrYGhrrOo6siO/MIqwfyilLR27pkfDgUk+raLuzADS8A3S/KLBisc0g==}
 
   json-schema-ref-resolver@3.0.0:
     resolution: {integrity: sha512-hOrZIVL5jyYFjzk7+y7n5JDzGlU8rfWDuYyHwGa2WA8/pcmMHezp2xsVwxrebD/Q9t8Nc5DboieySDpCp4WG4A==}
@@ -1872,8 +1865,6 @@ snapshots:
 
   chai@6.2.2: {}
 
-  chalk@5.6.2: {}
-
   cliui@6.0.0:
     dependencies:
       string-width: 4.2.3
@@ -2138,7 +2129,7 @@ snapshots:
 
   is-promise@4.0.0: {}
 
-  jose@5.9.6: {}
+  jose@6.2.10: {}
 
   json-schema-ref-resolver@3.0.0:
     dependencies:

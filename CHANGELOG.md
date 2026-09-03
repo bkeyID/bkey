@@ -42,6 +42,12 @@ Not yet published to npm. Build from source (`typescript/packages/login`) until 
 
 ### Changed
 
+- **`jose` upgraded to 6.x** (from `~5.9.0`). v6 is Web Crypto-only; this
+  package never used the Node `KeyObject` path, and the id_token verification
+  call shape is unchanged — `createRemoteJWKSet(new URL(jwks_uri))` plus
+  `jwtVerify(..., { algorithms: ['EdDSA'], requiredClaims, clockTolerance })`
+  all behave identically under v6. Verified against a live JWKS endpoint in
+  the package's own test suite.
 - **Declared a Node floor (`engines.node: >=20`)**, matching `@bkey/node`. The
   package had no `engines` field, so npm gave installers no signal at all
   before the first publish.
@@ -51,6 +57,17 @@ Not yet published to npm. Build from source (`typescript/packages/login`) until 
   its expiry. Other metadata remains optional, and malformed fields are
   rejected instead of coerced.
 - **Quickstart defaults to production** (`https://id.bkey.id`) instead of `staging-api.bkey.id`. Login with bkey is enabled in production, and the App Store build of the bkey app is enrolled there — so the documented path now works with the app a developer already has. Staging remains available via `BKEY_ISSUER`, and both READMEs document the environment/issuer table plus the `auth.bkey.id` pitfall.
+
+---
+
+## `@bkey/cli` 0.3.1 — unreleased
+
+Published package is still 0.3.0.
+
+### Changed
+
+- **Dropped the unused `chalk` dependency.** The CLI never imported it and
+  emits no ANSI styling of its own, so it was dead weight in every install.
 
 ---
 
@@ -160,6 +177,15 @@ Not yet published to npm. Build from source (`typescript/packages/login`) until 
 ## `@bkey/node` 0.1.1 — unreleased
 
 Published package is still 0.1.0.
+
+### Changed
+
+- **`jose` upgraded to 6.x** (from `~5.9.0`). v6 drops the Node `KeyObject`
+  backend in favour of Web Crypto; this package only ever passed JWKs, so the
+  verification path is unaffected. `createRemoteJWKSet(url, { cacheMaxAge })`,
+  `createLocalJWKSet`, the `algorithms: ['EdDSA']` allowlist, `requiredClaims`,
+  `clockTolerance`, and every `jose.errors` class mapped in `verify.ts` behave
+  the same under v6. Node floor is unchanged at >=20.
 
 ### Fixed
 
