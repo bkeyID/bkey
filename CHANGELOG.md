@@ -6,9 +6,13 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ---
 
-## `@bkey/login` 0.1.0 — unreleased
+## `@bkey/login` 0.1.0 — 2026-09-03
 
-Not yet published to npm. Build from source (`typescript/packages/login`) until the first release.
+First release. `npm install @bkey/login`.
+
+> Published without a provenance attestation — `pnpm publish --provenance`
+> silently dropped the flag. Fixed for subsequent releases; it cannot be added
+> to 0.1.0 retroactively.
 
 ### Added
 

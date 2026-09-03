@@ -47,6 +47,21 @@ jobs:
       - run: pnpm --filter @bkey/sdk publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # pnpm 9 does not forward --provenance to npm; the env var does reach
+          # it. Both are set so whichever the pnpm version honours wins.
+          NPM_CONFIG_PROVENANCE: "true"
+      - name: Verify provenance attestation attached
+        run: |
+          version=$(node -p "require('./packages/sdk/package.json').version")
+          url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2fsdk@$version"
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/sdk@$version"; exit 0; }
+            echo "attempt $i: attestation not visible yet (HTTP $code)"
+            sleep 10
+          done
+          echo "::error::@bkey/sdk@$version published WITHOUT a provenance attestation" >&2
+          exit 1
 
   publish-cli:
     name: Publish @bkey/cli to npm
@@ -86,6 +101,21 @@ jobs:
       - run: pnpm --filter @bkey/cli publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # pnpm 9 does not forward --provenance to npm; the env var does reach
+          # it. Both are set so whichever the pnpm version honours wins.
+          NPM_CONFIG_PROVENANCE: "true"
+      - name: Verify provenance attestation attached
+        run: |
+          version=$(node -p "require('./packages/cli/package.json').version")
+          url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2fcli@$version"
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/cli@$version"; exit 0; }
+            echo "attempt $i: attestation not visible yet (HTTP $code)"
+            sleep 10
+          done
+          echo "::error::@bkey/cli@$version published WITHOUT a provenance attestation" >&2
+          exit 1
 
   publish-node:
     name: Publish @bkey/node to npm
@@ -126,6 +156,21 @@ jobs:
       - run: pnpm --filter @bkey/node publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # pnpm 9 does not forward --provenance to npm; the env var does reach
+          # it. Both are set so whichever the pnpm version honours wins.
+          NPM_CONFIG_PROVENANCE: "true"
+      - name: Verify provenance attestation attached
+        run: |
+          version=$(node -p "require('./packages/node/package.json').version")
+          url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2fnode@$version"
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/node@$version"; exit 0; }
+            echo "attempt $i: attestation not visible yet (HTTP $code)"
+            sleep 10
+          done
+          echo "::error::@bkey/node@$version published WITHOUT a provenance attestation" >&2
+          exit 1
 
   publish-login:
     name: Publish @bkey/login to npm
@@ -166,3 +211,18 @@ jobs:
       - run: pnpm --filter @bkey/login publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # pnpm 9 does not forward --provenance to npm; the env var does reach
+          # it. Both are set so whichever the pnpm version honours wins.
+          NPM_CONFIG_PROVENANCE: "true"
+      - name: Verify provenance attestation attached
+        run: |
+          version=$(node -p "require('./packages/login/package.json').version")
+          url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2flogin@$version"
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/login@$version"; exit 0; }
+            echo "attempt $i: attestation not visible yet (HTTP $code)"
+            sleep 10
+          done
+          echo "::error::@bkey/login@$version published WITHOUT a provenance attestation" >&2
+          exit 1

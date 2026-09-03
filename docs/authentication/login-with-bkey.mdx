@@ -318,17 +318,13 @@ comparison still succeeds.
 
 ## Installing the SDK
 
-`@bkey/login` is not yet published to npm. Until it is, build it from the
-repository:
-
 ```bash
-git clone https://github.com/bkeyID/bkey
-cd bkey/typescript && pnpm install && pnpm --filter @bkey/login build
+npm install @bkey/login
 ```
 
-Then depend on it by path, or `npm pack` it into a tarball your app can install.
-The core helpers are a thin wrapper over standard OIDC, so you can also integrate
-with any OIDC client library and skip the SDK entirely.
+Requires Node 20 or newer. The core helpers are a thin wrapper over standard
+OIDC, so you can also integrate with any OIDC client library and skip the SDK
+entirely.
 
 ## See also
 

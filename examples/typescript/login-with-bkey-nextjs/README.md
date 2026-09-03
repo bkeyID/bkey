@@ -1,17 +1,14 @@
 # Login with bkey — Next.js quickstart
 
 Passwordless, biometric sign-in on a Next.js (App Router) site in ~5 lines,
-via [Auth.js](https://authjs.dev) + [`@bkey/login`](../../../typescript/packages/login).
+via [Auth.js](https://authjs.dev) + [`@bkey/login`](https://www.npmjs.com/package/@bkey/login).
 
 You will need the bkey app on your phone to approve the sign-in.
 
 ## Run it
 
 ```bash
-# 0. @bkey/login is not on npm yet, so build it from this repo first. This
-#    example depends on it by path (`file:../../../typescript/packages/login`),
-#    which will become `^0.1.0` once the package is published.
-(cd ../../../typescript && pnpm install && pnpm --filter @bkey/login build)
+# 0. Install dependencies (@bkey/login comes from npm)
 npm install
 
 # 1. Get credentials — self-serve, no dashboard, no account (RFC 7591):
