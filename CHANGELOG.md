@@ -52,15 +52,43 @@ First release. `npm install @bkey/login`.
   `jwtVerify(..., { algorithms: ['EdDSA'], requiredClaims, clockTolerance })`
   all behave identically under v6. Verified against a live JWKS endpoint in
   the package's own test suite.
-- **Declared a Node floor (`engines.node: >=20`)**, matching `@bkey/node`. The
-  package had no `engines` field, so npm gave installers no signal at all
-  before the first publish.
+- **Declared a Node floor (`engines.node: >=20.19.0`)**, matching `@bkey/sdk`
+  and `@bkey/node`. The package had no `engines` field, so npm gave installers
+  no signal at all before the first publish.
 - **Registration response validation:** `registerClient()` now requires
   `client_id`, `registration_client_uri`, and the anonymous management token.
   Confidential registrations must also include the issued client secret and
   its expiry. Other metadata remains optional, and malformed fields are
   rejected instead of coerced.
 - **Quickstart defaults to production** (`https://id.bkey.id`) instead of `staging-api.bkey.id`. Login with bkey is enabled in production, and the App Store build of the bkey app is enrolled there — so the documented path now works with the app a developer already has. Staging remains available via `BKEY_ISSUER`, and both READMEs document the environment/issuer table plus the `auth.bkey.id` pitfall.
+
+---
+
+## `@bkey/cli` 0.4.0 — unreleased
+
+Published package is still 0.3.0.
+
+### Breaking
+
+- **Node.js 22.12 is now the minimum.** `@bkey/cli` had no `engines` field while
+  its `commander` dependency moved to 15.x (`engines: >=22.12.0`), so npm gave
+  installers no signal beyond a bare transitive `EBADENGINE` warning naming a
+  package they never asked for. The floor is now declared where installers see
+  it. This ships before it can bite anyone: the published 0.3.0 predates the
+  `commander` bump. Node 20 reached end of life on 2026-04-30; users on it
+  should upgrade the runtime rather than pin the CLI.
+
+---
+
+## `@bkey/sdk` 0.2.1 — unreleased
+
+Published package is still 0.2.0.
+
+### Changed
+
+- **Declared `engines.node: ">=20.19.0"`.** This documents the floor
+  `@noble/curves` 2.x already imposed rather than raising it — installs that
+  worked keep working, and installs that would have failed now say why.
 
 ---
 
@@ -189,7 +217,11 @@ Published package is still 0.1.0.
   verification path is unaffected. `createRemoteJWKSet(url, { cacheMaxAge })`,
   `createLocalJWKSet`, the `algorithms: ['EdDSA']` allowlist, `requiredClaims`,
   `clockTolerance`, and every `jose.errors` class mapped in `verify.ts` behave
-  the same under v6. Node floor is unchanged at >=20.
+  the same under v6. `jose` 6 declares no `engines`, so it imposes no floor
+  of its own.
+- **`engines.node` tightened from `">=20"` to `">=20.19.0"`** to match the
+  floor the rest of the workspace declares. Every 20.x below 20.19 is an
+  end-of-life patch release, so this rules out nothing anyone should be running.
 
 ### Fixed
 

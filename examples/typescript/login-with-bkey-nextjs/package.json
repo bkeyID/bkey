@@ -1,6 +1,9 @@
 {
   "name": "login-with-bkey-nextjs",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "description": "Quickstart: Login with bkey on a Next.js App Router site via Auth.js",
   "scripts": {
     "dev": "next dev",
