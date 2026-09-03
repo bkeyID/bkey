@@ -112,21 +112,46 @@ uv build && uv publish --token YOUR_TOKEN
 
 ## Provenance
 
-Every npm publish runs with `--provenance` from GitHub Actions, so npm records a
-signed attestation linking the tarball to the workflow run and commit that built
-it. The package page shows a **"Built and signed on GitHub Actions"** badge, and
+Publishes run from GitHub Actions with provenance, so npm records a signed
+attestation linking the tarball to the workflow run and commit that built it.
+The package page shows a **"Built and signed on GitHub Actions"** badge, and
 `npm audit signatures` verifies it.
 
-This requires two things that are already wired up in `publish-npm.yml` and must
-not be removed:
+Do not remove any of these from `publish-npm.yml`:
 
 - `permissions: id-token: write` on each publish job (the OIDC token npm
   exchanges for the attestation)
-- an `NPM_TOKEN` that is a **granular** access token — classic automation tokens
-  cannot attach provenance
+- both `--provenance` **and** `NPM_CONFIG_PROVENANCE: "true"`. pnpm 9 accepts
+  `--provenance` without complaint but does not forward it to npm — the flag
+  alone silently produces an unsigned publish. The env var does reach npm.
+- the **Verify provenance attestation attached** step, which polls the registry
+  after publishing and fails the job if no attestation is present. Provenance
+  failing silently is the whole problem; this step is what makes the claim on
+  this page checkable rather than aspirational.
 
-Provenance also requires the repo to be public and the package to be public,
-both of which hold here.
+Provenance also requires an `NPM_TOKEN` that is a **granular** access token
+(classic automation tokens cannot attach provenance), and both repo and package
+must be public — all true here.
+
+Verify any release by hand with:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  "https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2f<pkg>@<version>"
+```
+
+`200` means the attestation is there; `404` means it is not.
+
+> **Known gap:** `@bkey/login@0.1.0` was published before this was fixed and has
+> **no** provenance attestation. It cannot be added retroactively — a republish
+> of the same version is not possible. The next version will carry one.
+
+## Token expiry
+
+npm access tokens expire, and an expired token fails a *new*-package publish
+with a confusing `404 Not Found - PUT` rather than a `401` — npm masks auth
+failures on package names it will not confirm exist. If a publish 404s on PUT,
+check the token's expiry date before assuming a scope or permission problem.
 
 ## First publish of a new package
 
