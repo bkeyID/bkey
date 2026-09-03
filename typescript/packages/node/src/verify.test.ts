@@ -1,6 +1,6 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
-import { SignJWT, generateKeyPair, exportJWK, type KeyLike } from 'jose';
+import { SignJWT, generateKeyPair, exportJWK } from 'jose';
 import { describe, it, expect, beforeAll } from 'vitest';
 
 import {
@@ -14,8 +14,8 @@ import {
 // ─── Test harness: generate a keypair, mint real JWTs, pass JWKS inline ─
 
 interface TestKeys {
-  privateKey: KeyLike;
-  publicKey: KeyLike;
+  privateKey: CryptoKey;
+  publicKey: CryptoKey;
   publicJwk: Record<string, unknown>;
 }
 
