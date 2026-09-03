@@ -93,7 +93,8 @@ const opState: {
 };
 
 beforeAll(async () => {
-  // jose v5 names the keygen alg 'EdDSA' (v6 renamed it 'Ed25519').
+  // jose v6 prefers the 'Ed25519' keygen alg name but still accepts the
+  // 'EdDSA' alias, which is the value that appears in JWS headers and JWKs.
   const kp = await generateKeyPair('EdDSA', { crv: 'Ed25519', extractable: true });
   edPrivate = kp.privateKey as CryptoKey;
   edJwk = await exportJWK(kp.publicKey);
