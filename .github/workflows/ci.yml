@@ -8,8 +8,16 @@ on:
 
 jobs:
   typescript:
-    name: TypeScript — build + test
+    name: TypeScript — build + test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the highest floor any package declares (@bkey/cli, via
+        # commander 15); 24 is the current active LTS. Running both means a
+        # green CI proves the declared floor is real AND that current LTS
+        # works. Node 20 went EOL 2026-04-30 and is deliberately not tested.
+        node-version: [22, 24]
     defaults:
       run:
         working-directory: typescript
@@ -20,10 +28,15 @@ jobs:
           version: 9
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # Asserts every published package declares engines.node, that each
+      # declared range is a subset of every dependency's own engines, and that
+      # this job's Node satisfies all of them. Without it, the next dependabot
+      # bump can raise the real floor again with nothing going red.
+      - run: node scripts/check-engines.mjs
       - run: pnpm build
       - run: pnpm test
 
@@ -70,7 +83,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
       - name: Lint markdown and MDX
         run: |
           cat > /tmp/.markdownlint.json << 'MLCFG'

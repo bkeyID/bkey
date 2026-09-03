@@ -25,7 +25,7 @@ jobs:
           version: 9
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
@@ -65,7 +65,7 @@ jobs:
           version: 9
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
@@ -104,7 +104,7 @@ jobs:
           version: 9
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
@@ -144,7 +144,7 @@ jobs:
           version: 9
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
