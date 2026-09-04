@@ -6,6 +6,17 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ---
 
+## `@bkey/cli` 0.3.1 — 2026-09-04
+
+### Added
+
+- **`bkey clients` — the developer dashboard, headless.** `list`, `get`, `create`, `update`, `rotate-secret`, `revoke`, `analytics`, `enable-personas`, `logo`, and `claim` manage the signed-in developer's "Login with bkey" OAuth clients from the terminal, so an agent on the developer's machine can set up and operate an integration end to end. `create` and `rotate-secret` print the secret once **and** push it end-to-end encrypted to the phone's vault (one approval on the phone; `--no-vault` to skip), where `bkey wrap` / `bkey proxy` can use it without the value ever appearing in a transcript. Every command takes `--json`. Runs as the human profile only — the API rejects agent `client_credentials` tokens for client management.
+- The `bkey` skill now covers adding "Login with bkey" to an app and managing its clients.
+
+### Internal
+
+- `bkey vault store`'s X25519 → AES-256-GCM envelope moved to `lib/vault-e2ee.ts` and is shared with `bkey clients`.
+
 ## `@bkey/login` 0.1.1 — 2026-09-04
 
 Configurable, safer request deadlines ([#88](https://github.com/bkeyID/bkey/issues/88)).

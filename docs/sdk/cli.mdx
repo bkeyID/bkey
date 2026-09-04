@@ -54,6 +54,12 @@ Add `--json` to get the full approval token on stdout for downstream use. Add `-
 | `bkey profiles use <name> [--agent]` | Set the default profile for that principal. |
 | `bkey profiles rename <old> <new> [--agent]` | Rename a profile. |
 | `bkey profiles delete <name> [--agent]` | Delete a profile. |
+| `bkey clients list [--all]` | List the Login with bkey OAuth clients you own. |
+| `bkey clients create --name <n> --redirect-uri <uri...> [--public] [--no-vault]` | Register a client owned by you; the secret is shown once **and** pushed to your phone's vault. |
+| `bkey clients get <id>` / `update <id> …` / `revoke <id>` | Read, edit (name, redirect URIs, post-logout URIs, id_token alg), and revoke. |
+| `bkey clients rotate-secret <id> [--grace-hours <n>] [--no-vault]` | New secret (shown once, vaulted); old one keeps working for the grace period. |
+| `bkey clients analytics <id>` | Started vs completed sign-ins over 7 / 30 days. |
+| `bkey clients enable-personas <id>` / `logo <id> <png>` / `claim <id> --registration-access-token <t>` | Per-site personas (permanent), logo upload, and claiming an anonymously registered client. |
 | `bkey approve <msg>` | Generic CIBA approval (agent-only). |
 | `bkey vault store <name>` | Store a secret with end-to-end encryption. |
 | `bkey vault access <name>` | Request a stored secret (biometric-approved). |
@@ -63,6 +69,27 @@ Add `--json` to get the full approval token on stdout for downstream use. Add `-
 | `bkey wrap -- <cmd>` | Run a command with vault secrets injected as env vars (biometric-approved reads). |
 
 Dual-mode commands (`vault`, `proxy`, `wrap`, `checkout`) accept `--agent` / `--human` / `--profile <name>`. `BKEY_PROFILE` and `BKEY_MODE=agent` env vars work for shell workflows.
+
+## `bkey clients` — the developer dashboard, headless
+
+Everything the [bkey.id/developers](https://bkey.id/developers) dashboard does for "Login with bkey" is available from the terminal, so an agent working on your machine can set up and operate your integration for you the way `flyctl` operates a Fly app. Client management is owner-scoped to the signed-in human (`bkey auth login`); agent `client_credentials` tokens are rejected, and every command accepts `--json`.
+
+```bash
+# Register a confidential client for your app. The secret prints once AND is
+# sent end-to-end encrypted to your phone's vault (one approval on the phone).
+bkey clients create --name "Brain15 (dev)"   --redirect-uri https://dev.brain15.example/api/auth/callback/bkey   --post-logout-redirect-uri https://dev.brain15.example/
+
+# Use the secret later without it ever appearing in a transcript:
+bkey wrap --env BKEY_CLIENT_SECRET="{vault:Brain15 (dev) · Login with bkey}" -- npm run dev
+
+bkey clients list
+bkey clients analytics bkey_client_xxx
+bkey clients update bkey_client_xxx --redirect-uri https://dev.brain15.example/api/auth/callback/bkey https://brain15.example/api/auth/callback/bkey
+bkey clients rotate-secret bkey_client_xxx --grace-hours 24
+bkey clients revoke bkey_client_xxx --yes
+```
+
+`--public` registers a PKCE-only client (no secret) for SPAs and native apps. `--no-vault` skips the phone push on `create` and `rotate-secret`; the secret is then printed once and not stored anywhere. A rotation that times out **may still have completed** on the server — check whether the old secret still works before rotating again.
 
 ## `bkey wrap` — inject vault secrets into a process
 

@@ -1,6 +1,6 @@
 {
   "name": "@bkey/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "BKey CLI — secure credential proxy and biometric approval for AI agents",
   "type": "module",
   "bin": {

@@ -1,10 +1,9 @@
 // copyright © 2025-2026 bkey inc. all rights reserved.
 
 import { Command } from 'commander';
-import { randomBytes, createCipheriv, createHash } from 'node:crypto';
 import { x25519 } from '@noble/curves/ed25519.js';
 import { createClient } from '../lib/config.js';
-import { pollStoreRequest } from '@bkey/sdk';
+import { storeOnPhone } from '../lib/vault-e2ee.js';
 
 export const vaultCommand = new Command('vault')
   .description('Manage vault items stored on your phone');
@@ -45,65 +44,18 @@ vaultCommand
       }
     }
 
-    // fetch phone's vault X25519 public key for E2EE encryption
-    let phonePublicKey: Buffer;
-    try {
-      const keyRes = await api.getVaultPublicKey();
-      phonePublicKey = Buffer.from(keyRes.publicKey, 'base64');
-      if (phonePublicKey.length !== 32) {
-        throw new Error(`Invalid key length: ${phonePublicKey.length} (expected 32)`);
-      }
-    } catch (err) {
-      const msg = (err as Error).message;
-      if (msg.includes('no encryption key') || msg.includes('not_found') || msg.includes('404')) {
-        console.error(
-          'No vault encryption key found. Open the vault in your BKey app first to generate one.',
-        );
-      } else {
-        console.error(`Failed to fetch vault key: ${msg}`);
-      }
-      process.exit(1);
-    }
-
-    // E2EE: X25519 ECDH → AES-256-GCM (same pattern as access request E2EE)
-    const ephemeralPrivateKey = x25519.utils.randomSecretKey();
-    const ephemeralPublicKey = x25519.getPublicKey(ephemeralPrivateKey);
-
-    // shared secret = X25519(cliPriv, phonePub) → SHA256 → AES key
-    const sharedSecret = x25519.getSharedSecret(ephemeralPrivateKey, phonePublicKey);
-    const aesKey = createHash('sha256').update(sharedSecret).digest();
-
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', aesKey, iv);
-    const plaintext = JSON.stringify(fields);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-
-    // pack: version (1) + ephemeralPub (32) + iv (12) + authTag (16) + ciphertext
-    // version 0x02 = X25519 ECDH envelope (v1 was the legacy embedded transit key)
-    // no transit key — backend cannot decrypt
-    const encryptedPayload = Buffer.concat([
-      Buffer.from([0x02]),
-      Buffer.from(ephemeralPublicKey),
-      iv,
-      authTag,
-      encrypted,
-    ]).toString('base64');
-
     console.log(`Sending "${name}" (${opts.type}) to your phone for storage...`);
 
     try {
-      const res = (await api.createStoreRequest({
+      console.log('Waiting for approval on your phone...');
+      await storeOnPhone(api, {
         itemType: opts.type,
         name,
+        fields,
         description: opts.description,
         tags: opts.tags,
         website: opts.website,
-        encryptedPayload,
-      })) as { storeRequest: { id: string } };
-
-      console.log('Waiting for approval on your phone...');
-      await pollStoreRequest(api, res.storeRequest.id);
+      });
 
       console.log(`\nStored "${name}" on your device.`);
       console.log(`\nUse in proxy:`);
