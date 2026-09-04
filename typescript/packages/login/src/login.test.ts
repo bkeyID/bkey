@@ -9,6 +9,7 @@ import {
   type JWK,
 } from 'jose';
 import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
   claimRegisteredClient,
   createBkeyLogin,
   deleteRegisteredClient,
@@ -62,6 +63,7 @@ const opState: {
   rejectManagement: boolean;
   redirectManagement: boolean;
   hangManagement: boolean;
+  hangToken: boolean;
   managementRequests: Array<{
     method: string;
     path: string;
@@ -89,6 +91,7 @@ const opState: {
   rejectManagement: false,
   redirectManagement: false,
   hangManagement: false,
+  hangToken: false,
   managementRequests: [],
 };
 
@@ -239,6 +242,7 @@ beforeAll(async () => {
       });
     }
     if (url.pathname === '/oauth/token' && req.method === 'POST') {
+      if (opState.hangToken) return;
       let body = '';
       for await (const chunk of req) body += chunk;
       const params = new URLSearchParams(body);
@@ -563,13 +567,13 @@ describe('registerClient (RFC 7591)', () => {
     }
   });
 
-  it('applies the five-second deadline to the full registration operation', async () => {
+  it('applies the default 30-second deadline to the full registration operation', async () => {
     opState.hangRegistration = true;
     const shortDeadline = AbortSignal.timeout(25);
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(shortDeadline);
     try {
       await expect(registerClient({ issuer: ISSUER, redirectUris: [REDIRECT] })).rejects.toThrow();
-      expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+      expect(timeoutSpy).toHaveBeenCalledWith(30_000);
     } finally {
       timeoutSpy.mockRestore();
       opState.hangRegistration = false;
@@ -1009,7 +1013,7 @@ describe('BKey dynamic client lifecycle', () => {
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(shortDeadline);
     try {
       await expect(getRegisteredClient(management)).rejects.toThrow();
-      expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+      expect(timeoutSpy).toHaveBeenCalledWith(30_000);
     } finally {
       timeoutSpy.mockRestore();
       opState.hangManagement = false;
@@ -1245,10 +1249,140 @@ describe('token revocation (RFC 7009)', () => {
       await expect(
         loginFor().revokeAccessToken('at_x', { signal: caller.signal }),
       ).rejects.toThrow();
-      expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+      expect(timeoutSpy).toHaveBeenCalledWith(30_000);
     } finally {
       timeoutSpy.mockRestore();
       opState.hangDiscovery = false;
+    }
+  });
+});
+
+describe('request deadlines (bkey#88)', () => {
+  const management = {
+    issuer: ISSUER,
+    registrationClientUri: REGISTRATION_CLIENT_URI,
+    managementAccessToken: 'bkey_rat_once',
+  };
+
+  it('defaults to 30 seconds — a cold rotateClientSecret() was measured over 5 s', () => {
+    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(30_000);
+  });
+
+  it('honours a per-call timeoutMs on client management', async () => {
+    opState.hangManagement = true;
+    const shortDeadline = AbortSignal.timeout(25);
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(shortDeadline);
+    try {
+      await expect(getRegisteredClient({ ...management, timeoutMs: 1_234 })).rejects.toThrow();
+      expect(timeoutSpy).toHaveBeenCalledWith(1_234);
+    } finally {
+      timeoutSpy.mockRestore();
+      opState.hangManagement = false;
+    }
+  });
+
+  it('surfaces an expired deadline as BkeyLoginError code request_timeout, with the platform error as cause', async () => {
+    opState.hangManagement = true;
+    try {
+      const err = await getRegisteredClient({ ...management, timeoutMs: 25 }).catch((e) => e);
+      expect(err).toBeInstanceOf(BkeyLoginError);
+      expect(err.code).toBe('request_timeout');
+      // The message must warn that the mutation may have completed server-side.
+      expect(err.message).toMatch(/may still have completed/);
+      expect((err.cause as Error).name).toBe('TimeoutError');
+    } finally {
+      opState.hangManagement = false;
+    }
+  });
+
+  it('applies the same deadline to secret rotation — the one-time-credential case', async () => {
+    opState.hangManagement = true;
+    try {
+      await expect(rotateClientSecret({ ...management, timeoutMs: 25 })).rejects.toMatchObject({
+        code: 'request_timeout',
+      });
+    } finally {
+      opState.hangManagement = false;
+    }
+  });
+
+  it('passes a caller abort through untouched (it is theirs, not a timeout)', async () => {
+    opState.hangManagement = true;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+    try {
+      const err = await getRegisteredClient({ ...management, signal: controller.signal }).catch(
+        (e) => e,
+      );
+      expect(err).not.toBeInstanceOf(BkeyLoginError);
+      expect((err as Error).name).toBe('AbortError');
+    } finally {
+      opState.hangManagement = false;
+    }
+  });
+
+  it('rejects a non-positive or non-finite timeoutMs before any request', async () => {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(getRegisteredClient({ ...management, timeoutMs: bad })).rejects.toMatchObject({
+        code: 'invalid_argument',
+      });
+    }
+    expect(() => loginFor({ timeoutMs: 0 })).toThrow(BkeyLoginError);
+  });
+
+  it('honours timeoutMs on registration and on discovery inside it', async () => {
+    opState.hangDiscovery = true;
+    try {
+      await expect(
+        registerClient({ issuer: ISSUER, redirectUris: [REDIRECT], timeoutMs: 25 }),
+      ).rejects.toMatchObject({ code: 'request_timeout' });
+    } finally {
+      opState.hangDiscovery = false;
+    }
+  });
+
+  it('bounds the authorization-code exchange in handleCallback (previously unbounded)', async () => {
+    const bkey = loginFor({ timeoutMs: 25 });
+    const auth = await bkey.authorizationUrl();
+    opState.hangToken = true;
+    try {
+      await expect(
+        bkey.handleCallback(`${REDIRECT}?code=abc&state=${auth.state}`, {
+          state: auth.state,
+          nonce: auth.nonce,
+          codeVerifier: auth.codeVerifier,
+        }),
+      ).rejects.toMatchObject({ code: 'request_timeout' });
+    } finally {
+      opState.hangToken = false;
+    }
+  });
+
+  it('lets a per-call handleCallback timeoutMs override the client default', async () => {
+    const bkey = loginFor();
+    const auth = await bkey.authorizationUrl();
+    opState.hangToken = true;
+    try {
+      await expect(
+        bkey.handleCallback(
+          `${REDIRECT}?code=abc&state=${auth.state}`,
+          { state: auth.state, nonce: auth.nonce, codeVerifier: auth.codeVerifier },
+          { timeoutMs: 25 },
+        ),
+      ).rejects.toMatchObject({ code: 'request_timeout' });
+    } finally {
+      opState.hangToken = false;
+    }
+  });
+
+  it('applies the client-level timeoutMs to revocation', async () => {
+    opState.hangRevocation = true;
+    try {
+      await expect(
+        loginFor({ timeoutMs: 25 }).revokeAccessToken('at_x'),
+      ).rejects.toMatchObject({ code: 'request_timeout' });
+    } finally {
+      opState.hangRevocation = false;
     }
   });
 });

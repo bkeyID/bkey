@@ -8,6 +8,7 @@ export {
   updateRegisteredClient,
   uploadRegisteredClientLogo,
 } from './client.js';
+export { DEFAULT_REQUEST_TIMEOUT_MS } from './client.js';
 export type { BkeyLogin } from './client.js';
 export { BkeyLoginError } from './types.js';
 export type {
@@ -15,6 +16,7 @@ export type {
   BkeyDiscovery,
   BkeyLoginConfig,
   ClaimRegisteredClientOptions,
+  HandleCallbackOptions,
   LoginResult,
   RevokeTokenOptions,
   RegisterClientOptions,

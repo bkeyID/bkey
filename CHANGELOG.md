@@ -6,6 +6,37 @@ This repo follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [
 
 ---
 
+## `@bkey/login` 0.1.1 — 2026-09-04
+
+Configurable, safer request deadlines ([#88](https://github.com/bkeyID/bkey/issues/88)).
+
+### Changed
+
+- **Default request deadline is 30 seconds, was 5.** A cold bkey deployment was
+  measured taking more than five seconds on `rotateClientSecret()`; a deadline
+  that fires on a request the server then completes loses the only copy of a
+  one-time credential. Exported as `DEFAULT_REQUEST_TIMEOUT_MS`.
+- **`handleCallback()` now bounds the authorization-code exchange and the
+  JWKS fetch.** They previously had no deadline at all, so a stalled token
+  endpoint hung the relying party's callback route indefinitely.
+
+### Added
+
+- **`timeoutMs` on every operation.** `registerClient()`, the client-management
+  helpers, `claimRegisteredClient()`, `createBkeyLogin({ timeoutMs })`,
+  `handleCallback(url, expected, { timeoutMs })`, and `revoke*Token(token,
+  { timeoutMs })`. A non-positive or non-finite value rejects with
+  `invalid_argument` before any request is sent.
+- **`request_timeout` error code.** An expired deadline rejects with a
+  `BkeyLoginError` (code `request_timeout`, the platform `TimeoutError` on
+  `cause`) instead of leaking the runtime's `DOMException`. A caller's own
+  `AbortSignal` abort still passes through untouched.
+- **"Timeouts and retries" README section** naming which operations are safe
+  to retry after a timeout and which are not (`registerClient()`,
+  `rotateClientSecret()`, `handleCallback()`).
+
+---
+
 ## `@bkey/login` 0.1.0 — 2026-09-03
 
 First release. `npm install @bkey/login`.

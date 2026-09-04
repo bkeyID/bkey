@@ -1,6 +1,6 @@
 {
   "name": "@bkey/login",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Login with bkey — drop-in OIDC sign-in (passwordless, biometric, phishing-resistant) for websites and apps. Self-serve client registration, PKCE flow helpers, id_token verification, and an Auth.js provider preset.",
   "type": "module",
   "main": "dist/index.js",

@@ -6,6 +6,7 @@ import {
   type BkeyDiscovery,
   type BkeyLoginConfig,
   type ClaimRegisteredClientOptions,
+  type HandleCallbackOptions,
   type LoginResult,
   type RevokeTokenOptions,
   type RegisterClientOptions,
@@ -20,10 +21,17 @@ import {
 } from './types.js';
 
 const DISCOVERY_PATH = '/.well-known/openid-configuration';
-const REVOCATION_TIMEOUT_MS = 5_000;
-const DISCOVERY_TIMEOUT_MS = 5_000;
-const REGISTRATION_TIMEOUT_MS = 5_000;
-const CLIENT_MANAGEMENT_TIMEOUT_MS = 5_000;
+/**
+ * Default deadline for every network call the SDK makes (bkey#88).
+ *
+ * 30 s, not 5 s: a cold bkey deployment (serverless boot + a cold Postgres
+ * pool) was measured taking >5 s on `rotateClientSecret()`, and a deadline
+ * that fires on a request the server then completes is worse than no deadline
+ * for a one-time credential — the caller sees a failure, the server has
+ * rotated the secret, and the only copy of the new secret is gone. Every
+ * operation accepts `timeoutMs` to tighten or loosen this per call.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_CLIENT_LOGO_UPLOAD_BYTES = 256 * 1024;
 // Production constructs registration_client_uri from the API audience even
 // though its OIDC issuer is id.bkey.id. Keep this exception exact so a caller
@@ -54,9 +62,64 @@ function isLoopbackHostname(hostname: string): boolean {
   );
 }
 
+/** Validate a caller-supplied deadline; fall back to the SDK default. */
+function resolveTimeoutMs(explicit: number | undefined, fallback = DEFAULT_REQUEST_TIMEOUT_MS): number {
+  if (explicit === undefined) return fallback;
+  if (typeof explicit !== 'number' || !Number.isFinite(explicit) || explicit <= 0) {
+    throw new BkeyLoginError(
+      'invalid_argument',
+      'timeoutMs must be a positive, finite number of milliseconds',
+    );
+  }
+  return explicit;
+}
+
+/**
+ * One deadline for a whole operation, composed with caller cancellation. The
+ * deadline signal is created HERE, once, so discovery + the operation's own
+ * request share it rather than each getting a fresh budget.
+ */
 function requestSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const deadlineSignal = AbortSignal.timeout(timeoutMs);
   return signal ? AbortSignal.any([signal, deadlineSignal]) : deadlineSignal;
+}
+
+/**
+ * Translate a platform abort into the SDK's error taxonomy. `AbortSignal.timeout`
+ * rejects the fetch with a DOMException named `TimeoutError`; that name is
+ * the only stable thing about it across runtimes, so callers previously had
+ * to sniff it. A caller's own abort (`AbortError`) is theirs and passes
+ * through untouched. Everything else passes through too.
+ */
+function translateAbort(err: unknown, operation: string): unknown {
+  if (err instanceof Error && err.name === 'TimeoutError') {
+    return new BkeyLoginError(
+      'request_timeout',
+      `${operation} did not complete within the request deadline. The request may still have ` +
+        'completed on the server — do not retry a non-idempotent operation without reconciling first.',
+      { cause: err },
+    );
+  }
+  return err;
+}
+
+/**
+ * `fetch` + body parse under one deadline, with the timeout translated to
+ * `request_timeout`. The body is read inside the same try so a deadline that
+ * fires mid-body is reported the same way as one that fires before headers.
+ */
+async function boundedJsonRequest(
+  input: string,
+  init: RequestInit & { signal: AbortSignal },
+  operation: string,
+): Promise<{ res: Response; body: Record<string, unknown> }> {
+  try {
+    const res = await fetch(input, init);
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    return { res, body };
+  } catch (err) {
+    throw translateAbort(err, operation);
+  }
 }
 
 function parseUrl(url: string, what: string): URL {
@@ -312,6 +375,7 @@ async function clientManagementRequest(
     registrationClientUri: string;
     accessToken: string;
     signal?: AbortSignal;
+    timeoutMs?: number;
   },
   operation: string,
   method: 'GET' | 'PATCH' | 'POST' | 'PUT' | 'DELETE',
@@ -321,20 +385,23 @@ async function clientManagementRequest(
     body: BodyInit;
   },
 ): Promise<Record<string, unknown>> {
-  const signal = requestSignal(opts.signal, CLIENT_MANAGEMENT_TIMEOUT_MS);
+  const signal = requestSignal(opts.signal, resolveTimeoutMs(opts.timeoutMs));
   const endpoint = clientManagementEndpoint(opts.issuer, opts.registrationClientUri, suffix);
-  const res = await fetch(endpoint, {
-    method,
-    redirect: 'error',
-    signal,
-    headers: {
-      accept: 'application/json',
-      authorization: `Bearer ${opts.accessToken}`,
-      ...(requestBody ? { 'content-type': requestBody.contentType } : {}),
+  const { res, body } = await boundedJsonRequest(
+    endpoint,
+    {
+      method,
+      redirect: 'error',
+      signal,
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${opts.accessToken}`,
+        ...(requestBody ? { 'content-type': requestBody.contentType } : {}),
+      },
+      ...(requestBody ? { body: requestBody.body } : {}),
     },
-    ...(requestBody ? { body: requestBody.body } : {}),
-  });
-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    operation,
+  );
   if (!res.ok) {
     throw responseError(
       body,
@@ -351,20 +418,34 @@ function managementRequestOptions(opts: RegisteredClientManagementOptions) {
     registrationClientUri: opts.registrationClientUri,
     accessToken: opts.managementAccessToken,
     signal: opts.signal,
+    timeoutMs: opts.timeoutMs,
   };
 }
 
-async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<BkeyDiscovery> {
-  const boundedSignal = requestSignal(signal, DISCOVERY_TIMEOUT_MS);
-  const res = await fetch(`${issuer.replace(/\/$/, '')}${DISCOVERY_PATH}`, {
-    signal: boundedSignal,
-    redirect: 'error',
-    headers: { accept: 'application/json' },
-  });
+/**
+ * Fetch and pin the issuer's discovery document. `signal` is the OPERATION's
+ * signal (already carrying its deadline); when absent, discovery gets its own
+ * default deadline so a stalled issuer cannot hang a caller indefinitely.
+ */
+async function fetchDiscovery(
+  issuer: string,
+  signal?: AbortSignal,
+  timeoutMs?: number,
+): Promise<BkeyDiscovery> {
+  const boundedSignal = signal ?? requestSignal(undefined, resolveTimeoutMs(timeoutMs));
+  const { res, body } = await boundedJsonRequest(
+    `${issuer.replace(/\/$/, '')}${DISCOVERY_PATH}`,
+    {
+      signal: boundedSignal,
+      redirect: 'error',
+      headers: { accept: 'application/json' },
+    },
+    'discovery',
+  );
   if (!res.ok) {
     throw new BkeyLoginError('discovery_failed', `discovery fetch failed: HTTP ${res.status}`);
   }
-  const doc = (await res.json()) as BkeyDiscovery;
+  const doc = body as unknown as BkeyDiscovery;
   if (!doc.authorization_endpoint || !doc.token_endpoint || !doc.jwks_uri) {
     throw new BkeyLoginError(
       'discovery_incomplete',
@@ -415,7 +496,7 @@ async function fetchDiscovery(issuer: string, signal?: AbortSignal): Promise<Bke
  * Store the returned secret like a password — it is shown exactly once.
  */
 export async function registerClient(opts: RegisterClientOptions): Promise<RegisteredClient> {
-  const signal = requestSignal(opts.signal, REGISTRATION_TIMEOUT_MS);
+  const signal = requestSignal(opts.signal, resolveTimeoutMs(opts.timeoutMs));
   const discovery = await fetchDiscovery(opts.issuer, signal);
   if (!discovery.registration_endpoint) {
     throw new BkeyLoginError(
@@ -424,26 +505,29 @@ export async function registerClient(opts: RegisterClientOptions): Promise<Regis
     );
   }
   assertSecureSameOrigin(opts.issuer, discovery.registration_endpoint, 'registration_endpoint');
-  const res = await fetch(discovery.registration_endpoint, {
-    method: 'POST',
-    redirect: 'error',
-    signal,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      redirect_uris: opts.redirectUris,
-      ...(opts.postLogoutRedirectUris
-        ? { post_logout_redirect_uris: opts.postLogoutRedirectUris }
-        : {}),
-      ...(opts.clientName ? { client_name: opts.clientName } : {}),
-      // bkey's token endpoint reads credentials from the form body
-      // (discovery advertises client_secret_post) — default to match.
-      token_endpoint_auth_method: opts.tokenEndpointAuthMethod ?? 'client_secret_post',
-      grant_types: ['authorization_code'],
-      response_types: ['code'],
-      scope: 'openid',
-    }),
-  });
-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const { res, body } = await boundedJsonRequest(
+    discovery.registration_endpoint,
+    {
+      method: 'POST',
+      redirect: 'error',
+      signal,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        redirect_uris: opts.redirectUris,
+        ...(opts.postLogoutRedirectUris
+          ? { post_logout_redirect_uris: opts.postLogoutRedirectUris }
+          : {}),
+        ...(opts.clientName ? { client_name: opts.clientName } : {}),
+        // bkey's token endpoint reads credentials from the form body
+        // (discovery advertises client_secret_post) — default to match.
+        token_endpoint_auth_method: opts.tokenEndpointAuthMethod ?? 'client_secret_post',
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        scope: 'openid',
+      }),
+    },
+    'client_registration',
+  );
   if (res.status !== 201 && res.status !== 200) {
     throw responseError(
       body,
@@ -602,6 +686,7 @@ export async function claimRegisteredClient(
       registrationClientUri: opts.registrationClientUri,
       accessToken: opts.ownerAccessToken,
       signal: opts.signal,
+      timeoutMs: opts.timeoutMs,
     },
     'client_registration_claim',
     'POST',
@@ -634,6 +719,9 @@ export async function claimRegisteredClient(
  * plus issuer / audience / nonce / expiry — all before any claim is returned.
  */
 export function createBkeyLogin(config: BkeyLoginConfig) {
+  // Validate once at construction so a bad default fails loudly, not on the
+  // first callback.
+  const defaultTimeoutMs = resolveTimeoutMs(config.timeoutMs);
   let discoveryDocument: BkeyDiscovery | null = null;
   let discoveryPromise: Promise<BkeyDiscovery> | null = null;
   let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -652,7 +740,7 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
     }
 
     if (!discoveryPromise) {
-      discoveryPromise = fetchDiscovery(config.issuer).then(
+      discoveryPromise = fetchDiscovery(config.issuer, undefined, defaultTimeoutMs).then(
         (doc) => {
           discoveryDocument = doc;
           discoveryPromise = null;
@@ -666,11 +754,13 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
     }
     return discoveryPromise;
   };
-  const jwks = async () => {
+  const jwks = async (signal?: AbortSignal, timeoutMs = defaultTimeoutMs) => {
     if (!jwksCache) {
-      const doc = await discovery();
+      const doc = await discovery(signal);
       assertSecureSameOrigin(config.issuer, doc.jwks_uri, 'jwks_uri');
-      jwksCache = createRemoteJWKSet(new URL(doc.jwks_uri));
+      // jose's remote JWKS has its own per-fetch deadline; align it with the
+      // operation's so a stalled JWKS host cannot outlive the caller's budget.
+      jwksCache = createRemoteJWKSet(new URL(doc.jwks_uri), { timeoutDuration: timeoutMs });
     }
     return jwksCache;
   };
@@ -682,10 +772,7 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
   ): Promise<void> => {
     // Start one deadline at method entry and compose it with caller
     // cancellation. The same signal bounds discovery and the revocation POST.
-    const deadlineSignal = AbortSignal.timeout(REVOCATION_TIMEOUT_MS);
-    const signal = opts.signal
-      ? AbortSignal.any([opts.signal, deadlineSignal])
-      : deadlineSignal;
+    const signal = requestSignal(opts.signal, resolveTimeoutMs(opts.timeoutMs, defaultTimeoutMs));
     const doc = await discovery(signal);
     if (!doc.revocation_endpoint) {
       throw new BkeyLoginError(
@@ -698,21 +785,24 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       doc.revocation_endpoint,
       'revocation_endpoint',
     );
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      // Do not let a same-origin endpoint forward the token or client secret.
-      redirect: 'error',
-      signal,
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        token,
-        token_type_hint: tokenTypeHint,
-        client_id: config.clientId,
-        ...(config.clientSecret ? { client_secret: config.clientSecret } : {}),
-      }).toString(),
-    });
+    const { res, body } = await boundedJsonRequest(
+      endpoint,
+      {
+        method: 'POST',
+        // Do not let a same-origin endpoint forward the token or client secret.
+        redirect: 'error',
+        signal,
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          token,
+          token_type_hint: tokenTypeHint,
+          client_id: config.clientId,
+          ...(config.clientSecret ? { client_secret: config.clientSecret } : {}),
+        }).toString(),
+      },
+      'token_revocation',
+    );
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       throw new BkeyLoginError(
         String(body.error ?? 'token_revocation_failed'),
         String(body.error_description ?? `token revocation failed: HTTP ${res.status}`),
@@ -747,6 +837,7 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
     async handleCallback(
       callbackUrl: string | URL,
       expected: { state: string; nonce: string; codeVerifier: string },
+      opts: HandleCallbackOptions = {},
     ): Promise<LoginResult> {
       const cb = new URL(callbackUrl);
       const err = cb.searchParams.get('error');
@@ -759,24 +850,33 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       if (!state || !safeEqual(state, expected.state)) {
         throw new BkeyLoginError('state_mismatch', 'callback state does not match — possible CSRF');
       }
-      const doc = await discovery();
-      const tokenRes = await fetch(doc.token_endpoint, {
-        method: 'POST',
-        // The token endpoint returns JSON and never redirects; refuse to follow
-        // a 3xx so a (same-origin) endpoint can't bounce this POST — carrying the
-        // code + client_secret + PKCE verifier — to an off-origin host.
-        redirect: 'error',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          client_id: config.clientId,
-          ...(config.clientSecret ? { client_secret: config.clientSecret } : {}),
-          redirect_uri: config.redirectUri,
-          code_verifier: expected.codeVerifier,
-        }).toString(),
-      });
-      const tokens = (await tokenRes.json().catch(() => ({}))) as Record<string, unknown>;
+      // One deadline for discovery + code exchange + JWKS (bkey#88): the
+      // exchange previously had NO deadline at all, so a stalled token
+      // endpoint hung the RP's callback route indefinitely.
+      const timeoutMs = resolveTimeoutMs(opts.timeoutMs, defaultTimeoutMs);
+      const signal = requestSignal(opts.signal, timeoutMs);
+      const doc = await discovery(signal);
+      const { res: tokenRes, body: tokens } = await boundedJsonRequest(
+        doc.token_endpoint,
+        {
+          method: 'POST',
+          // The token endpoint returns JSON and never redirects; refuse to follow
+          // a 3xx so a (same-origin) endpoint can't bounce this POST — carrying the
+          // code + client_secret + PKCE verifier — to an off-origin host.
+          redirect: 'error',
+          signal,
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            client_id: config.clientId,
+            ...(config.clientSecret ? { client_secret: config.clientSecret } : {}),
+            redirect_uri: config.redirectUri,
+            code_verifier: expected.codeVerifier,
+          }).toString(),
+        },
+        'token_exchange',
+      );
       if (!tokenRes.ok || !tokens.id_token) {
         throw new BkeyLoginError(
           String(tokens.error ?? 'token_exchange_failed'),
@@ -784,7 +884,7 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
         );
       }
       const idToken = String(tokens.id_token);
-      const { payload } = await jwtVerify(idToken, await jwks(), {
+      const { payload } = await jwtVerify(idToken, await jwks(signal, timeoutMs), {
         issuer: doc.issuer,
         audience: config.clientId,
         // Static known-safe allowlist, deliberately NOT derived from the
@@ -817,12 +917,12 @@ export function createBkeyLogin(config: BkeyLoginConfig) {
       };
     },
 
-    /** Revoke only this access token. The full operation has a 5-second deadline. */
+    /** Revoke only this access token. The full operation shares one request deadline. */
     async revokeAccessToken(token: string, opts: RevokeTokenOptions = {}): Promise<void> {
       return revokeToken(token, 'access_token', opts);
     },
 
-    /** Revoke only this refresh token. The full operation has a 5-second deadline. */
+    /** Revoke only this refresh token. The full operation shares one request deadline. */
     async revokeRefreshToken(token: string, opts: RevokeTokenOptions = {}): Promise<void> {
       return revokeToken(token, 'refresh_token', opts);
     },
