@@ -27,8 +27,16 @@ export interface RegisterClientOptions {
    * so registering Basic would never authenticate (PR #32 review).
    */
   tokenEndpointAuthMethod?: 'client_secret_post' | 'none';
-  /** Cancel registration. The SDK's 5-second deadline remains active. */
+  /** Cancel registration. The SDK's request deadline remains active. */
   signal?: AbortSignal;
+  /**
+   * Deadline for the whole operation (discovery + registration), in
+   * milliseconds. Defaults to `DEFAULT_REQUEST_TIMEOUT_MS` (30 s). When it
+   * fires the call rejects with `BkeyLoginError` code `request_timeout` —
+   * and the registration MAY still have completed on the server, so do not
+   * retry it blindly (see README "Timeouts and retries").
+   */
+  timeoutMs?: number;
 }
 
 interface ClientMetadata {
@@ -84,6 +92,12 @@ export interface RegisteredClientManagementOptions {
   managementAccessToken: string;
   /** Cancel the request. */
   signal?: AbortSignal;
+  /**
+   * Request deadline in milliseconds. Defaults to `DEFAULT_REQUEST_TIMEOUT_MS`
+   * (30 s). On expiry the call rejects with code `request_timeout`; a
+   * timed-out mutation MAY still have been applied on the server.
+   */
+  timeoutMs?: number;
 }
 
 export interface UpdateRegisteredClientOptions extends RegisteredClientManagementOptions {
@@ -130,6 +144,8 @@ export interface ClaimRegisteredClientOptions {
   registrationAccessToken: string;
   /** Cancel the request. */
   signal?: AbortSignal;
+  /** Request deadline in milliseconds. Defaults to `DEFAULT_REQUEST_TIMEOUT_MS`. */
+  timeoutMs?: number;
 }
 
 export interface BkeyLoginConfig {
@@ -140,6 +156,13 @@ export interface BkeyLoginConfig {
   clientSecret?: string;
   /** The redirect_uri registered for this client. */
   redirectUri: string;
+  /**
+   * Default deadline, in milliseconds, for every network call this client
+   * makes: discovery, the authorization-code exchange in `handleCallback()`,
+   * JWKS fetches, and token revocation. Defaults to
+   * `DEFAULT_REQUEST_TIMEOUT_MS` (30 s). Per-call options override it.
+   */
+  timeoutMs?: number;
 }
 
 export interface AuthorizationRequest {
@@ -152,8 +175,24 @@ export interface AuthorizationRequest {
 }
 
 export interface RevokeTokenOptions {
-  /** Cancel the full operation sooner. The 5-second deadline remains active. */
+  /** Cancel the full operation sooner. The request deadline remains active. */
   signal?: AbortSignal;
+  /** Deadline for discovery + revocation, in milliseconds. Overrides `BkeyLoginConfig.timeoutMs`. */
+  timeoutMs?: number;
+}
+
+/** Options for `handleCallback()`. */
+export interface HandleCallbackOptions {
+  /** Cancel the token exchange sooner. The request deadline remains active. */
+  signal?: AbortSignal;
+  /**
+   * Deadline for discovery + the authorization-code exchange + the JWKS
+   * fetch, in milliseconds. Overrides `BkeyLoginConfig.timeoutMs`. On expiry
+   * the call rejects with code `request_timeout`; the authorization code is
+   * single-use, so a timed-out exchange cannot be retried — send the user
+   * through sign-in again.
+   */
+  timeoutMs?: number;
 }
 
 export interface LoginResult {
@@ -171,8 +210,8 @@ export interface LoginResult {
 
 export class BkeyLoginError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
-    super(message);
+  constructor(code: string, message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = 'BkeyLoginError';
     this.code = code;
   }

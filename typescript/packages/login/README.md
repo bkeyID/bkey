@@ -200,6 +200,38 @@ does not disable the default deadline.
 id_token signature against bkey's published JWKS (EdDSA), issuer, audience,
 expiry, and nonce (replay).
 
+## Timeouts and retries
+
+Every network call the SDK makes runs under one deadline —
+`DEFAULT_REQUEST_TIMEOUT_MS` (30 seconds) — and every operation accepts a
+`timeoutMs` option to change it per call. `createBkeyLogin({ timeoutMs })`
+sets the default for that client's discovery, `handleCallback()` code
+exchange, JWKS fetch, and token revocation; `handleCallback(url, expected,
+{ timeoutMs })` and `revoke*Token(token, { timeoutMs })` override it per call.
+A caller-supplied `signal` still cancels sooner.
+
+When the deadline fires the call rejects with a `BkeyLoginError` whose `code`
+is `request_timeout` (the platform `TimeoutError` is on `cause`). **A timeout
+is not a failure report from the server.** The request may still have
+completed after the deadline, so treat each operation according to what a
+duplicate would do:
+
+| Operation                                             | Safe to retry after `request_timeout`?                                                                                                                                            |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getRegisteredClient()`, discovery                    | Yes — reads are idempotent. Retry with backoff.                                                                                                                                   |
+| `updateRegisteredClient()`, `uploadRegisteredClientLogo()` | Yes, with the same payload — then read the client back to confirm.                                                                                                        |
+| `deleteRegisteredClient()`, `revoke*Token()`          | Yes — deleting or revoking something already gone succeeds.                                                                                                                       |
+| `registerClient()`                                    | **No.** A second call creates a second client. Read back your registrations (or contact support) before registering again.                                                        |
+| `rotateClientSecret()`                                | **No.** A second call rotates again and the timed-out secret — which may already be live — is never returned. Reconcile first: if your old secret has stopped working, the rotation went through and you must rotate once more, deliberately, with a longer `timeoutMs`. |
+| `claimRegisteredClient()`                             | Reconcile ownership first (`getRegisteredClient()` with the owner token); retry only if the client is still unclaimed.                                                             |
+| `handleCallback()`                                    | **No.** The authorization code is single-use. Send the user through sign-in again.                                                                                                |
+
+`registerClient()` and `rotateClientSecret()` do not yet accept an idempotency
+key; that is backend work tracked in
+[bkeyID/bkey#88](https://github.com/bkeyID/bkey/issues/88). Until it lands,
+give those two calls a generous `timeoutMs` rather than a tight one — a cold
+bkey deployment has been measured taking more than five seconds on a rotation.
+
 ## What your users see
 
 Your site redirects to the bkey consent page; the user scans a QR (or taps
