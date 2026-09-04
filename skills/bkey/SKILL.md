@@ -1,6 +1,6 @@
 ---
 name: bkey
-description: "Secure API calls using credentials from the BKey mobile vault, and buy products from online stores with biometric facial biometrics approval. Use when: (1) making HTTP requests that need API keys, bearer tokens, or passwords, (2) the user says 'make an API call' or 'call an endpoint' with credentials, (3) accessing external services that require authentication stored in the vault, (4) running commands that need secret environment variables, (5) the user wants to purchase, buy, or order a product from a Shopify store. NOT for: requests that don't need authentication, local file operations, or git commands."
+description: "Secure API calls using credentials from the BKey mobile vault, buy products from online stores with biometric approval, and set up or manage 'Login with bkey' (OIDC) for the user's apps. Use when: (1) making HTTP requests that need API keys, bearer tokens, or passwords, (2) the user says 'make an API call' or 'call an endpoint' with credentials, (3) accessing external services that require authentication stored in the vault, (4) running commands that need secret environment variables, (5) the user wants to purchase, buy, or order a product from a Shopify store, (6) the user wants to add 'Login with bkey' / 'Sign in with bkey' to an app, or create, list, inspect, update, rotate the secret of, revoke, or see login analytics for their bkey OAuth clients. NOT for: requests that don't need authentication, local file operations, or git commands."
 metadata:
   openclaw:
     emoji: "🔐"
@@ -300,6 +300,35 @@ Agent: Got it, entering the password...
 
 Agent: I can see the store now. What product are you looking for?
 ```
+
+## Manage "Login with bkey" OAuth clients (bkey clients)
+
+The developer dashboard is fully available from the CLI, so you can integrate "Login with bkey" into the user's app end to end. These commands run as the signed-in **human** profile (`bkey auth login`) — never with `--agent` — because OAuth clients are owned by the developer. Prefer `--json` and parse the output.
+
+```bash
+bkey clients list --json                             # what already exists (never create a duplicate)
+bkey clients create --name "My App (dev)" \
+  --redirect-uri https://localhost:3000/api/auth/callback/bkey --json
+bkey clients get <client_id> --json
+bkey clients update <client_id> --redirect-uri <uri...> --json
+bkey clients analytics <client_id> --json           # started/completed sign-ins, 7d + 30d
+bkey clients rotate-secret <client_id> --json       # only when the user asks; old secret valid 24h
+bkey clients revoke <client_id> --yes --json         # only when the user asks; irreversible here
+```
+
+### Integrating "Login with bkey" for the user
+
+1. `bkey clients list --json` — reuse an existing client for the same app/environment if one exists.
+2. `bkey clients create --name "<app> (<env>)" --redirect-uri <the app's real callback URL>`. For Auth.js the callback is `https://<host>/api/auth/callback/bkey`. Use `--public` for SPAs / native apps (PKCE, no secret).
+3. The command prints the `client_id` and, for confidential clients, the secret **once**, and pushes the secret to the user's phone vault as an `api_key` item named `"<app> (<env>) · Login with bkey"` (field `key`). The user approves that on their phone. **Do not paste the secret into files, chat, or commits.** Read it at runtime instead:
+   ```bash
+   bkey wrap --env BKEY_CLIENT_SECRET="{vault:<app> (<env>) · Login with bkey}" -- npm run dev
+   ```
+   or put `BKEY_CLIENT_ID` in the app's env and let the deployment read the secret through the vault.
+4. Wire the app: `npm install @bkey/login`, then in Auth.js `BkeyProvider({ clientId, clientSecret })` (see `docs/sdk/login`). The issuer defaults to production; pass `issuer: 'https://staging-api.bkey.id'` when the client was created against staging (`BKEY_BASE_URL`).
+5. Verify with `bkey clients analytics <client_id> --json` after the first sign-in.
+
+If `create` prints `vault_error`, the secret was **not** stored (the user declined or the phone has no vault key) — tell the user, and do not retry silently. Never run `rotate-secret` or `revoke` unless the user explicitly asked for that specific client; a rotation that times out may still have completed on the server.
 
 ## Request Biometric Approval (bkey approve)
 
