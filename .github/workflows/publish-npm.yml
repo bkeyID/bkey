@@ -54,7 +54,11 @@ jobs:
         run: |
           version=$(node -p "require('./packages/sdk/package.json').version")
           url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2fsdk@$version"
-          for i in 1 2 3 4 5 6; do
+          # The attestation is indexed asynchronously after publish. Both
+          # 2026-09-05 releases (login 0.1.1, cli 0.3.1) published fine and
+          # showed the attestation ~2 min later — after this loop had given up
+          # at 60 s and failed the run. Wait up to 5 min.
+          for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
             [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/sdk@$version"; exit 0; }
             echo "attempt $i: attestation not visible yet (HTTP $code)"
@@ -108,7 +112,11 @@ jobs:
         run: |
           version=$(node -p "require('./packages/cli/package.json').version")
           url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2fcli@$version"
-          for i in 1 2 3 4 5 6; do
+          # The attestation is indexed asynchronously after publish. Both
+          # 2026-09-05 releases (login 0.1.1, cli 0.3.1) published fine and
+          # showed the attestation ~2 min later — after this loop had given up
+          # at 60 s and failed the run. Wait up to 5 min.
+          for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
             [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/cli@$version"; exit 0; }
             echo "attempt $i: attestation not visible yet (HTTP $code)"
@@ -163,7 +171,11 @@ jobs:
         run: |
           version=$(node -p "require('./packages/node/package.json').version")
           url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2fnode@$version"
-          for i in 1 2 3 4 5 6; do
+          # The attestation is indexed asynchronously after publish. Both
+          # 2026-09-05 releases (login 0.1.1, cli 0.3.1) published fine and
+          # showed the attestation ~2 min later — after this loop had given up
+          # at 60 s and failed the run. Wait up to 5 min.
+          for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
             [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/node@$version"; exit 0; }
             echo "attempt $i: attestation not visible yet (HTTP $code)"
@@ -218,7 +230,11 @@ jobs:
         run: |
           version=$(node -p "require('./packages/login/package.json').version")
           url="https://registry.npmjs.org/-/npm/v1/attestations/@bkey%2flogin@$version"
-          for i in 1 2 3 4 5 6; do
+          # The attestation is indexed asynchronously after publish. Both
+          # 2026-09-05 releases (login 0.1.1, cli 0.3.1) published fine and
+          # showed the attestation ~2 min later — after this loop had given up
+          # at 60 s and failed the run. Wait up to 5 min.
+          for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
             [ "$code" = "200" ] && { echo "provenance attestation present for @bkey/login@$version"; exit 0; }
             echo "attempt $i: attestation not visible yet (HTTP $code)"
