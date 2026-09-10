@@ -132,6 +132,17 @@ Published package is still 0.2.0.
   `@noble/curves` 2.x already imposed rather than raising it — installs that
   worked keep working, and installs that would have failed now say why.
 
+### Fixed
+
+- **The package no longer ships its own unit tests.** `tsconfig.json` was
+  missing the `"exclude": ["src/**/*.test.ts"]` that `@bkey/node` and
+  `@bkey/login` already had, so `tsc` emitted `dist/client.test.js` from
+  `src/client.test.ts` and `files: ["dist"]` swept it, its declaration, and its
+  source map into the tarball. The emitted JS still imported `vitest`, a
+  devDependency consumers do not install. 0.2.0 on npm contains these three
+  files; they are inert unless imported, and nothing in the package's public
+  entry points reaches them.
+
 ---
 
 ## `@bkey/cli` 0.3.1 — unreleased
