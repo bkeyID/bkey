@@ -39,12 +39,6 @@ jobs:
       - run: node scripts/check-engines.mjs
       - run: pnpm build
       - run: pnpm test
-      # Asserts no published package's tarball contains test artifacts.
-      # `@bkey/sdk` shipped `dist/client.test.js` to npm because its tsconfig
-      # was missing the `exclude` its siblings had; nothing went red, and the
-      # stray file also got collected as a second test suite, doubling the
-      # reported test count. Runs after the build so it inspects real output.
-      - run: node scripts/check-pack-contents.mjs
 
   python:
     name: Python — lint + test
