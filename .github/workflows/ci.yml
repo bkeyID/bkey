@@ -39,6 +39,30 @@ jobs:
       - run: node scripts/check-engines.mjs
       - run: pnpm build
       - run: pnpm test
+      # Typechecks the test sources that each package's build tsconfig
+      # excludes from dist/. Without this they are compiled by nothing: vitest
+      # runs tests but does not typecheck them, and its `typecheck.include`
+      # default only covers `*-d.ts`. Runs `tsc -p tsconfig.test.json`
+      # (`noEmit`) per package; `check-pack-contents.mjs` below asserts every
+      # package with test sources actually has that config and script, because
+      # `turbo run typecheck` reports a package that has neither as a success.
+      - run: pnpm typecheck
+      # Unit tests for the tarball matcher itself, over the exact paths a
+      # review found the previous version of this gate getting wrong. Node's
+      # built-in runner: no tool to install, and nothing to pin in a `run:`
+      # step where dependabot cannot see it.
+      - run: pnpm test:scripts
+      # Asserts, for every published package: its tarball contains no test
+      # module (a `test`/`tests`/`__tests__` directory at any depth, a code
+      # file under `spec`/`specs`, or a `.test.`/`.spec.` JS/TS/map/declaration
+      # basename, all case-insensitively — see scripts/lib/pack-contents.mjs
+      # for what it does not cover); the tarball does contain every file the
+      # manifest points at plus at least one JS module, so an unbuilt dist/
+      # cannot score as clean; and its test sources are still typechecked.
+      # `@bkey/sdk` shipped `dist/client.test.js` to npm because its tsconfig
+      # was missing the `exclude` its siblings had, and nothing went red.
+      # Runs after the build so it inspects real output.
+      - run: node scripts/check-pack-contents.mjs
 
   python:
     name: Python — lint + test

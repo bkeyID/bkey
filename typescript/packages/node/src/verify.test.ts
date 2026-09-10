@@ -9,14 +9,22 @@ import {
   defaultJwksUrl,
   extractBearerToken,
   verifyToken,
+  type BKeyInlineJwks,
 } from './index.js';
 
 // ─── Test harness: generate a keypair, mint real JWTs, pass JWKS inline ─
 
+/**
+ * One key of an inline JWKS, as the public type declares it. Typing the
+ * harness against the exported type rather than `Record<string, unknown>` is
+ * what makes `jwksFor()` assert the shape these tests claim to exercise.
+ */
+type TestJwk = BKeyInlineJwks['keys'][number];
+
 interface TestKeys {
   privateKey: CryptoKey;
   publicKey: CryptoKey;
-  publicJwk: Record<string, unknown>;
+  publicJwk: TestJwk;
 }
 
 async function makeKeys(): Promise<TestKeys> {
@@ -24,14 +32,14 @@ async function makeKeys(): Promise<TestKeys> {
     crv: 'Ed25519',
     extractable: true,
   });
-  const publicJwk = (await exportJWK(publicKey)) as unknown as Record<string, unknown>;
+  const publicJwk = (await exportJWK(publicKey)) as unknown as TestJwk;
   publicJwk.kid = 'test-key-1';
   publicJwk.alg = 'EdDSA';
   publicJwk.use = 'sig';
   return { privateKey, publicKey, publicJwk };
 }
 
-function jwksFor(keys: TestKeys): { keys: Array<Record<string, unknown>> } {
+function jwksFor(keys: TestKeys): BKeyInlineJwks {
   return { keys: [keys.publicJwk] };
 }
 
@@ -554,7 +562,7 @@ describe('verifyToken', () => {
 
     it('rejects inline JWK that contains a "d" (private key) field', async () => {
       const token = await signToken(keys, { iss: issuer });
-      const badJwk = { ...(keys.publicJwk as Record<string, unknown>), d: 'private-key-bytes' };
+      const badJwk = { ...keys.publicJwk, d: 'private-key-bytes' };
       await expect(
         verifyToken(token, {
           issuer,

@@ -132,6 +132,43 @@ Published package is still 0.2.0.
   `@noble/curves` 2.x already imposed rather than raising it — installs that
   worked keep working, and installs that would have failed now say why.
 
+### Fixed
+
+- **The package no longer ships its own unit tests.** `tsconfig.json` was
+  missing the `"exclude": ["src/**/*.test.ts"]` that `@bkey/node` and
+  `@bkey/login` already had, so `tsc` emitted `dist/client.test.js` from
+  `src/client.test.ts` and `files: ["dist", "README.md"]` swept it, its
+  declaration, and its source map into the tarball. `npm pack --dry-run` goes
+  from 16 entries to 13; `dist/` still emits all 12 real artifacts and
+  `exports`/`types` resolve unchanged. The emitted JS still imported `vitest`,
+  which consumers do not install. 0.2.0 on npm contains these three files;
+  they are inert unless imported, and nothing in the package's public entry
+  points reaches them. The stray copy was also collected as a second test
+  suite, so the reported count was 18 for 9 tests; it is now 9.
+
+### Internal
+
+- **`tsconfig.test.json` keeps the excluded tests typechecked.** The `exclude`
+  above also removes `src/client.test.ts` from the only program that compiled
+  it: vitest runs tests without typechecking them, and its
+  `typecheck.include` default only covers `*-d.ts`. `@bkey/sdk`, `@bkey/node`
+  and `@bkey/login` each gained a `tsconfig.test.json` — `noEmit`, with the
+  base config's `exclude` reset, since `extends` inherits it — run by a
+  per-package `typecheck` script and `pnpm typecheck` in CI.
+- **`scripts/check-pack-contents.mjs` holds both halves of that invariant.**
+  For every published workspace package it fails if the tarball would contain
+  a test module, if the tarball is missing a file the package's own manifest
+  points at or contains no JavaScript at all, or if the package has test
+  sources that no `tsconfig.test.json` program typechecks with `noEmit`.
+  A test module means: a `test`, `tests`, `__test__` or `__tests__` path
+  segment at any depth; a code file under `spec` or `specs`; or a basename
+  containing `.test.` or `.spec.` on a `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`,
+  `.d.ts`, `.tsx`, `.mts`, `.cts` or `.map` file — all case-insensitively.
+  It deliberately does not flag separator variants such as `client-test.js`,
+  nor non-code files outside a test directory, so a `dist/openapi.spec.json`
+  fixture is not a false positive. The matcher lives in
+  `scripts/lib/pack-contents.mjs`; `pnpm test:scripts` unit-tests it.
+
 ---
 
 ## `@bkey/cli` 0.3.1 — unreleased
@@ -264,6 +301,17 @@ Published package is still 0.1.0.
 - **`engines.node` tightened from `">=20"` to `">=20.19.0"`** to match the
   floor the rest of the workspace declares. Every 20.x below 20.19 is an
   end-of-life patch release, so this rules out nothing anyone should be running.
+
+### Internal
+
+- **The JWKS test harness is typed against the exported `BKeyInlineJwks`.**
+  Turning on the new `tsconfig.test.json` for this package surfaced 38
+  pre-existing `TS2322`s in `src/verify.test.ts`: `makeKeys()` returned
+  `Record<string, unknown>` and `jwksFor()` declared
+  `{ keys: Array<Record<string, unknown>> }`, neither of which is assignable
+  to the `jwks` option's public type. Nothing had compiled the file since its
+  `exclude` was added, so the suite passed while asserting a shape it never
+  typechecked. No test behaviour changed.
 
 ### Fixed
 

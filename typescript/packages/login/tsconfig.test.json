@@ -1,0 +1,23 @@
+{
+  // Typechecks the test sources that tsconfig.json deliberately excludes.
+  //
+  // `tsc -p tsconfig.json` leaves `src/**/*.test.ts` out so they never reach
+  // `dist/` and never get published. That also removes them from the only
+  // program that typechecked them: vitest runs tests but does not typecheck
+  // them, and its `typecheck.include` default only covers `*-d.ts` files. So a
+  // type error in a test file went unnoticed until this config existed.
+  //
+  // "exclude" is restated because `extends` inherits it, and the inherited
+  // value is exactly the set of files this config exists to check — leave it
+  // off and the program resolves to zero test files while still exiting 0.
+  // "include" is restated for the same reason.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}
