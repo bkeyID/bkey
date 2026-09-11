@@ -40,12 +40,16 @@ jobs:
       - run: pnpm build
       - run: pnpm test
       # Typechecks the test sources that each package's build tsconfig
-      # excludes from dist/. Without this they are compiled by nothing: vitest
-      # runs tests but does not typecheck them, and its `typecheck.include`
-      # default only covers `*-d.ts`. Runs `tsc -p tsconfig.test.json`
-      # (`noEmit`) per package; `check-pack-contents.mjs` below asserts every
-      # package with test sources actually has that config and script, because
-      # `turbo run typecheck` reports a package that has neither as a success.
+      # excludes from dist/. Without this they are compiled by nothing:
+      # `vitest run` executes tests without typechecking them, and its
+      # `typecheck.include` default (`*.test-d.*`) applies only under
+      # `--typecheck`, which no package here passes — so a `*.test-d.ts` type
+      # test is no more typechecked than a `*.test.ts`. Runs
+      # `tsc -p tsconfig.test.json` (`noEmit`) per package;
+      # `check-pack-contents.mjs` below asserts every package with test sources
+      # actually has that config and a script that passes it to `tsc -p`,
+      # because `turbo run typecheck` reports a package that has neither as a
+      # success.
       - run: pnpm typecheck
       # Unit tests for the tarball matcher itself, over the exact paths a
       # review found the previous version of this gate getting wrong. Node's
@@ -53,12 +57,13 @@ jobs:
       # step where dependabot cannot see it.
       - run: pnpm test:scripts
       # Asserts, for every published package: its tarball contains no test
-      # module (a `test`/`tests`/`__tests__` directory at any depth, a code
-      # file under `spec`/`specs`, or a `.test.`/`.spec.` JS/TS/map/declaration
-      # basename, all case-insensitively — see scripts/lib/pack-contents.mjs
-      # for what it does not cover); the tarball does contain every file the
-      # manifest points at plus at least one JS module, so an unbuilt dist/
-      # cannot score as clean; and its test sources are still typechecked.
+      # module (a `test`/`tests`/`__test__`/`__tests__`/`__mocks__` directory
+      # at any depth, a code file under `spec`/`specs`, or a
+      # `.test.`/`.spec.`/`.test-d.`/`.spec-d.` JS/TS/map/declaration basename,
+      # all case-insensitively — see scripts/lib/pack-contents.mjs for what it
+      # does not cover); the tarball does contain every file the manifest
+      # points at plus at least one JS module, so an unbuilt dist/ cannot score
+      # as clean; and its test sources are still typechecked.
       # `@bkey/sdk` shipped `dist/client.test.js` to npm because its tsconfig
       # was missing the `exclude` its siblings had, and nothing went red.
       # Runs after the build so it inspects real output.
