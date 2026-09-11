@@ -1,11 +1,14 @@
 {
   // Typechecks the test sources that tsconfig.json deliberately excludes.
   //
-  // `tsc -p tsconfig.json` leaves `src/**/*.test.ts` out so they never reach
-  // `dist/` and never get published. That also removes them from the only
-  // program that typechecked them: vitest runs tests but does not typecheck
-  // them, and its `typecheck.include` default only covers `*-d.ts` files. So a
-  // type error in a test file went unnoticed until this config existed.
+  // `tsc -p tsconfig.json` excludes the `.test.ts` / `.spec.ts` / `.test-d.ts`
+  // / `.spec-d.ts` family so they never reach `dist/` and never get published.
+  // That also removes them from the only program that typechecked them:
+  // `vitest run` executes tests without typechecking them, and its
+  // `typecheck.include` default (`*.test-d.*`) applies only under
+  // `--typecheck`, which this package does not pass — so even a `*.test-d.ts`
+  // type test is typechecked by nothing but this config. A type error in a
+  // test file went unnoticed until it existed.
   //
   // "exclude" is restated because `extends` inherits it, and the inherited
   // value is exactly the set of files this config exists to check — leave it

@@ -18,8 +18,10 @@ import {
   classifyEntry,
   findTestArtifacts,
   hasJsModule,
+  isTestSource,
   tarballFilePaths,
   declaredEntryPoints,
+  typecheckProjects,
 } from './pack-contents.mjs';
 
 const flagged = (path) => classifyEntry(path)?.rule ?? null;
@@ -58,12 +60,41 @@ describe('classifyEntry — artifacts tsc emits from a *.test.ts source', () => 
   }
 });
 
+describe('classifyEntry — artifacts tsc emits from a *.test-d.ts source', () => {
+  // `*.test-d.ts` is vitest's own default type-test naming convention
+  // (`typecheck.include` defaults to `**/*.test-d.?(c|m)[jt]s?(x)`), and an
+  // `"exclude": ["src/**/*.test.ts"]` does not match it — so tsc emitted all
+  // of these into dist/ and `files: ["dist"]` published them, while the
+  // matcher's `/\.(?:test|spec)\./` saw a hyphen where it wanted a dot.
+  for (const path of [
+    'dist/client.test-d.js',
+    'dist/client.test-d.d.ts',
+    'dist/client.test-d.js.map',
+    'dist/client.test-d.d.ts.map',
+    'dist/client.test-d.ts',
+    'dist/client.test-d.mjs',
+    'dist/client.test-d.cjs',
+    'dist/client.test-d.mts',
+    'dist/client.test-d.cts',
+    'dist/client.test-d.tsx',
+    'dist/client.TEST-D.js',
+    'dist/nested/deep/client.spec-d.js',
+    'dist/client.spec-d.d.ts',
+  ]) {
+    test(path, () => assert.equal(flagged(path), 'test-file'));
+  }
+});
+
 describe('classifyEntry — test directories, at any depth and any case', () => {
   for (const path of [
     'dist/test/foo.js',
     'dist/tests/helpers.js',
     'dist/__tests__/setup.js',
     'dist/__test__/setup.js',
+    'dist/__mocks__/client.js',
+    'dist/__MOCKS__/client.js',
+    'dist/a/b/__mocks__/fs.js',
+    'dist/__mocks__/fixture.json',
     'dist/Tests/Helpers.js',
     'dist/TEST/foo.js',
     'test/foo.js',
@@ -109,6 +140,12 @@ describe('classifyEntry — files a package may legitimately publish', () => {
     'dist/specialize.js',
     'dist/client-test.js',
     'dist/client_test.js',
+    // `-d` only counts when the extension dot follows it.
+    'dist/client.test-data.js',
+    'dist/client.test-doubles.js',
+    'dist/client.spec-driven.js',
+    'dist/client.test-d.json',
+    'dist/mocks/client.js',
   ]) {
     test(path, () => assert.equal(flagged(path), null));
   }
@@ -128,11 +165,15 @@ describe('findTestArtifacts', () => {
       'package.json',
       'dist/index.js',
       'dist/client.test.js',
+      'dist/client.test-d.d.ts',
       'dist/openapi.spec.json',
+      'dist/__mocks__/fs.js',
       'dist/tests/helpers.js',
     ]);
     assert.deepEqual(hits, [
       { path: 'dist/client.test.js', rule: 'test-file' },
+      { path: 'dist/client.test-d.d.ts', rule: 'test-file' },
+      { path: 'dist/__mocks__/fs.js', rule: 'test-dir' },
       { path: 'dist/tests/helpers.js', rule: 'test-dir' },
     ]);
   });
@@ -250,5 +291,111 @@ describe('declaredEntryPoints', () => {
 
   test('returns nothing for a manifest that declares nothing', () => {
     assert.deepEqual(declaredEntryPoints({ name: '@bkey/sdk', files: ['dist'] }), []);
+  });
+});
+
+describe('isTestSource — which sources check C demands typechecking for', () => {
+  for (const name of [
+    'client.test.ts',
+    'client.test.tsx',
+    'client.test.mts',
+    'client.test.cts',
+    'client.spec.ts',
+    'client.TEST.TS',
+    // The shape that slipped through: check C's old `/\.test\.[cm]?tsx?$/`
+    // never saw it, so a package holding only type tests reported full
+    // coverage. `vitest run` does not typecheck these — `typecheck.include`
+    // applies only under `--typecheck`.
+    'client.test-d.ts',
+    'client.test-d.tsx',
+    'client.test-d.mts',
+    'client.test-d.cts',
+    'client.spec-d.ts',
+  ]) {
+    test(`${name} is a test source`, () => assert.equal(isTestSource(name), true));
+  }
+
+  for (const name of [
+    'client.ts',
+    'index.ts',
+    'testing.ts',
+    'contest.ts',
+    'client.test-data.ts',
+    'client-test.ts',
+    'client_test.ts',
+    // Emitted artifacts are check A's job, not check C's.
+    'client.test.js',
+    'client.test-d.js',
+    'client.test.d.ts',
+  ]) {
+    test(`${name} is not a test source`, () => assert.equal(isTestSource(name), false));
+  }
+
+  for (const bad of [undefined, null, 42, {}]) {
+    test(`returns false for ${JSON.stringify(bad) ?? String(bad)}`, () => {
+      assert.equal(isTestSource(bad), false);
+    });
+  }
+});
+
+describe('typecheckProjects — reads the -p argument, not any substring', () => {
+  test('the plain form every package uses', () => {
+    assert.deepEqual(typecheckProjects('tsc -p tsconfig.test.json'), ['tsconfig.test.json']);
+  });
+
+  test('--project, long and inline forms', () => {
+    assert.deepEqual(typecheckProjects('tsc --project tsconfig.test.json'), [
+      'tsconfig.test.json',
+    ]);
+    assert.deepEqual(typecheckProjects('tsc --project=tsconfig.test.json'), [
+      'tsconfig.test.json',
+    ]);
+    assert.deepEqual(typecheckProjects('tsc -p=tsconfig.test.json'), ['tsconfig.test.json']);
+  });
+
+  test('strips ./ and surrounding quotes so paths compare equal', () => {
+    assert.deepEqual(typecheckProjects('tsc -p ./tsconfig.test.json'), ['tsconfig.test.json']);
+    assert.deepEqual(typecheckProjects('tsc -p "tsconfig.test.json"'), ['tsconfig.test.json']);
+  });
+
+  test('collects every project in a chained script', () => {
+    assert.deepEqual(typecheckProjects('tsc -p tsconfig.json && tsc -p tsconfig.test.json'), [
+      'tsconfig.json',
+      'tsconfig.test.json',
+    ]);
+  });
+
+  test('a shell comment mentioning the config does not count as running it', () => {
+    // The bypass this replaced a substring test to close: npm runs scripts
+    // through `sh`, which drops the comment before `tsc` ever sees it, so the
+    // old `script.includes('tsconfig.test.json')` passed a package that
+    // typechecked only its build program.
+    assert.deepEqual(typecheckProjects('tsc -p tsconfig.json # tsconfig.test.json'), [
+      'tsconfig.json',
+    ]);
+    assert.equal(
+      typecheckProjects('tsc -p tsconfig.json # tsconfig.test.json').includes(
+        'tsconfig.test.json',
+      ),
+      false,
+    );
+  });
+
+  test('a bare mention with no -p at all counts as nothing', () => {
+    assert.deepEqual(typecheckProjects('echo tsconfig.test.json'), []);
+    assert.deepEqual(typecheckProjects('tsc'), []);
+    assert.deepEqual(typecheckProjects('tsc --noEmit'), []);
+  });
+
+  test('a dangling -p yields no project rather than a bogus one', () => {
+    assert.deepEqual(typecheckProjects('tsc -p'), []);
+    assert.deepEqual(typecheckProjects('tsc -p --noEmit'), []);
+    assert.deepEqual(typecheckProjects('tsc -p # tsconfig.test.json'), []);
+  });
+
+  test('returns nothing for a missing script instead of throwing', () => {
+    assert.deepEqual(typecheckProjects(undefined), []);
+    assert.deepEqual(typecheckProjects(null), []);
+    assert.deepEqual(typecheckProjects(42), []);
   });
 });
