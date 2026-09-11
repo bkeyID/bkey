@@ -5,10 +5,37 @@ import { BKey } from './client.js';
 
 describe('BKey', () => {
   describe('constructor', () => {
-    it('strips trailing slash from apiUrl', () => {
-      const bkey = new BKey({ apiUrl: 'https://api.bkey.id/' });
-      // Access private baseUrl via request that reveals it
-      expect(() => bkey).not.toThrow();
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('strips trailing slash from apiUrl', async () => {
+      const mockFetch = vi.fn()
+        // First call: client credentials
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'tok', expires_in: 3600 }),
+        })
+        // Second call: vault items
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ items: [] }),
+        });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const bkey = new BKey({
+        apiUrl: 'https://api.bkey.id/',
+        clientId: 'c',
+        clientSecret: 's',
+      });
+
+      await bkey.listVaultItems();
+
+      // Both the token endpoint and the API path must be free of doubled slashes.
+      const [tokenUrl] = mockFetch.mock.calls[0];
+      expect(tokenUrl).toBe('https://api.bkey.id/oauth/token');
+      const [itemsUrl] = mockFetch.mock.calls[1];
+      expect(itemsUrl).toBe('https://api.bkey.id/v1/vault/items');
     });
 
     it('uses provided access token', async () => {
