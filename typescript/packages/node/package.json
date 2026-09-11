@@ -25,6 +25,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc -p tsconfig.test.json",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "test": "vitest run"
