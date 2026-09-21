@@ -30,7 +30,7 @@
     "jose": "^6.2.12"
   },
   "devDependencies": {
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.1",
     "typescript": "^7.0.2"
   },
   "repository": {
