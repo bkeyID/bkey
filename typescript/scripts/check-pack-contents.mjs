@@ -24,11 +24,12 @@
  *   B. Tarball completeness. Fail unless the tarball actually contains every
  *      file the manifest promises (`main`, `types`, `exports`, `bin`) and at
  *      least one runnable JavaScript module.
- *   C. Typecheck coverage. Any package with `src/**\/*.test.ts` sources must
+ *   C. Typecheck coverage. Any package with test sources under `src/` — a
+ *      `.test.`, `.spec.`, `.test-d.` or `.spec-d.` TypeScript basename — must
  *      have a `tsconfig.test.json` whose resolved program — as reported by
  *      `tsc --showConfig`, not by re-implementing tsc's globs — contains every
- *      one of those files, with `noEmit`, and a `typecheck` script that runs
- *      it.
+ *      one of those files, with `noEmit`, and a `typecheck` script that passes
+ *      that config to `tsc -p`.
  *
  * Check B exists because the predecessor of this gate had none. Its `checked`
  * counter counted packages, not files, so with `packages/sdk/dist` moved aside
@@ -50,8 +51,10 @@ import {
   declaredEntryPoints,
   findTestArtifacts,
   hasJsModule,
+  isTestSource,
   RULE_DESCRIPTIONS,
   tarballFilePaths,
+  typecheckProjects,
 } from './lib/pack-contents.mjs';
 
 const TS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -134,14 +137,20 @@ function resolvedProgram(pkgDir, configName, pkgName) {
   };
 }
 
-/** Every `*.test.ts` under a package's `src/`, as POSIX-relative paths. */
+/**
+ * Every TypeScript test source under a package's `src/`, as POSIX-relative
+ * paths. `isTestSource` covers `.test.`, `.spec.`, `.test-d.` and `.spec-d.`;
+ * a `*.test-d.ts` counts because `vitest run` typechecks it no more than it
+ * typechecks a `*.test.ts` — `typecheck.include` applies only under
+ * `--typecheck`, which no package here passes.
+ */
 function testSources(pkgDir) {
   const found = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.isFile() && /\.test\.[cm]?tsx?$/i.test(entry.name)) {
+      else if (entry.isFile() && isTestSource(entry.name)) {
         found.push(relative(pkgDir, full).split(sep).join('/'));
       }
     }
@@ -164,9 +173,11 @@ function checkTarball(pkgDir, dir, manifest, name) {
         leaked
           .map((hit) => `      ${hit.path}  (${RULE_DESCRIPTIONS[hit.rule]})`)
           .join('\n') +
-        `\n    Fix: add "exclude": ["src/**/*.test.ts"] to packages/${dir}/tsconfig.json` +
-        ` and a packages/${dir}/tsconfig.test.json that keeps typechecking them` +
-        `\n    (or narrow "files" in packages/${dir}/package.json).`,
+        `\n    Fix: widen "exclude" in packages/${dir}/tsconfig.json to cover the` +
+        `\n    source that emitted them (the .test.ts / .spec.ts / .test-d.ts /` +
+        `\n    .spec-d.ts family), keeping packages/${dir}/tsconfig.test.json as the` +
+        `\n    program that still typechecks them (or narrow "files" in` +
+        `\n    packages/${dir}/package.json).`,
     );
   }
 
@@ -216,8 +227,9 @@ function checkTypecheckCoverage(pkgDir, dir, manifest, name) {
     errors.push(
       `${name} has ${tests.length} test source(s) but no packages/${dir}/${configName}. ` +
         `The build tsconfig must keep them out of dist/, so nothing else ` +
-        `typechecks them: vitest runs tests without typechecking them, and its ` +
-        `\`typecheck.include\` default only covers \`*-d.ts\`.`,
+        `typechecks them: \`vitest run\` executes tests without typechecking ` +
+        `them, and its \`typecheck.include\` default (\`*.test-d.*\`) applies only ` +
+        `under \`--typecheck\`, which no package here passes.`,
     );
     return;
   }
@@ -242,11 +254,15 @@ function checkTypecheckCoverage(pkgDir, dir, manifest, name) {
     );
   }
 
+  // Read the actual `-p` / `--project` argument, not any substring of the
+  // script: `tsc -p tsconfig.json # tsconfig.test.json` mentions the config
+  // without ever compiling it, and npm runs scripts through `sh`, which drops
+  // the comment before `tsc` sees it.
   const script = manifest.scripts?.typecheck;
-  if (typeof script !== 'string' || !script.includes(configName)) {
+  if (!typecheckProjects(script).includes(configName)) {
     errors.push(
-      `${name} needs a "typecheck" script running \`tsc -p ${configName}\` ` +
-        `(found ${script === undefined ? 'none' : JSON.stringify(script)}). ` +
+      `${name} needs a "typecheck" script that passes ${configName} to ` +
+        `\`tsc -p\` (found ${script === undefined ? 'none' : JSON.stringify(script)}). ` +
         `\`pnpm typecheck\` in CI dispatches per package, so a package without ` +
         `the script is skipped silently.`,
     );

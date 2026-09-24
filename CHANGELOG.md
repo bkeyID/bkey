@@ -150,24 +150,40 @@ Published package is still 0.2.0.
 
 - **`tsconfig.test.json` keeps the excluded tests typechecked.** The `exclude`
   above also removes `src/client.test.ts` from the only program that compiled
-  it: vitest runs tests without typechecking them, and its
-  `typecheck.include` default only covers `*-d.ts`. `@bkey/sdk`, `@bkey/node`
-  and `@bkey/login` each gained a `tsconfig.test.json` — `noEmit`, with the
-  base config's `exclude` reset, since `extends` inherits it — run by a
-  per-package `typecheck` script and `pnpm typecheck` in CI.
+  it: `vitest run` executes tests without typechecking them, and its
+  `typecheck.include` default (`*.test-d.*`) applies only under `--typecheck`,
+  which no package here passes. `@bkey/sdk`, `@bkey/node` and `@bkey/login`
+  each gained a `tsconfig.test.json` — `noEmit`, with the base config's
+  `exclude` reset, since `extends` inherits it — run by a per-package
+  `typecheck` script and `pnpm typecheck` in CI.
+- **Each build `tsconfig.json` excludes the whole test-source family.**
+  `"exclude": ["src/**/*.test.ts"]` alone did not match `src/*.test-d.ts`,
+  which is vitest's own default naming convention for type tests, so `tsc`
+  emitted `dist/client.test-d.js`, `dist/client.test-d.d.ts` and
+  `dist/client.test-d.js.map` and `files: ["dist"]` published all three.
+  `@bkey/sdk`, `@bkey/node` and `@bkey/login` now exclude `src/**/*.test.ts`,
+  `src/**/*.spec.ts`, `src/**/*.test-d.ts` and `src/**/*.spec-d.ts`, and
+  `tsconfig.test.json` still typechecks every one of them.
 - **`scripts/check-pack-contents.mjs` holds both halves of that invariant.**
   For every published workspace package it fails if the tarball would contain
   a test module, if the tarball is missing a file the package's own manifest
   points at or contains no JavaScript at all, or if the package has test
   sources that no `tsconfig.test.json` program typechecks with `noEmit`.
-  A test module means: a `test`, `tests`, `__test__` or `__tests__` path
-  segment at any depth; a code file under `spec` or `specs`; or a basename
-  containing `.test.` or `.spec.` on a `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`,
-  `.d.ts`, `.tsx`, `.mts`, `.cts` or `.map` file — all case-insensitively.
-  It deliberately does not flag separator variants such as `client-test.js`,
-  nor non-code files outside a test directory, so a `dist/openapi.spec.json`
-  fixture is not a false positive. The matcher lives in
-  `scripts/lib/pack-contents.mjs`; `pnpm test:scripts` unit-tests it.
+  A test module means: a `test`, `tests`, `__test__`, `__tests__` or
+  `__mocks__` path segment at any depth; a code file under `spec` or `specs`;
+  or a basename containing `.test.`, `.spec.`, `.test-d.` or `.spec-d.` on a
+  `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`, `.d.ts`, `.tsx`, `.mts`, `.cts` or
+  `.map` file — all case-insensitively. It deliberately does not flag
+  separator variants such as `client-test.js`, prefix-only variants such as
+  `client.test-data.js` where `-d` is not followed by the extension dot, nor
+  non-code files outside a test directory, so a `dist/openapi.spec.json`
+  fixture is not a false positive. The same `.test.` / `.spec.` / `.test-d.` /
+  `.spec-d.` family decides which `src/` sources must be typechecked, and the
+  `typecheck` script is validated by the config it passes to `tsc -p` rather
+  than by any substring of the script, so
+  `tsc -p tsconfig.json # tsconfig.test.json` no longer satisfies the gate.
+  The matcher lives in `scripts/lib/pack-contents.mjs`; `pnpm test:scripts`
+  unit-tests it.
 
 ---
 

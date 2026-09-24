@@ -14,17 +14,21 @@
  * `.map` sidecars.
  *
  * The classifier below requires one of these before flagging a `.test.` /
- * `.spec.` basename or a file under `spec/`. That is the whole point of the
- * check: the harm this gate exists to prevent is publishing an executable
- * module that imports a devDependency (`@bkey/sdk@0.2.0` shipped
- * `dist/client.test.js`, whose second line is `import ... from 'vitest'`) and
- * that vitest then collects as a second copy of a suite. A `.json` fixture can
- * do neither.
+ * `.spec.` / `.test-d.` / `.spec-d.` basename or a file under `spec/`. That is
+ * the whole point of the check: the harm this gate exists to prevent is
+ * publishing an executable module that imports a devDependency
+ * (`@bkey/sdk@0.2.0` shipped `dist/client.test.js`, whose second line is
+ * `import ... from 'vitest'`) and that vitest then collects as a second copy
+ * of a suite. A `.json` fixture can do neither.
  */
 const CODE_FILE = /\.(?:[cm]?jsx?|[cm]?tsx?|map)$/i;
 
-/** Directory names that only ever hold test scaffolding. */
-const TEST_DIRS = new Set(['test', 'tests', '__test__', '__tests__']);
+/**
+ * Directory names that only ever hold test scaffolding. `__mocks__` is jest's
+ * and vitest's convention for manual module mocks; like the others, nothing a
+ * package publishes belongs under it.
+ */
+const TEST_DIRS = new Set(['test', 'tests', '__test__', '__tests__', '__mocks__']);
 
 /**
  * Directory names that usually hold test scaffolding but sometimes hold a
@@ -33,8 +37,19 @@ const TEST_DIRS = new Set(['test', 'tests', '__test__', '__tests__']);
  */
 const SPEC_DIRS = new Set(['spec', 'specs', '__spec__', '__specs__']);
 
-/** `client.test.js`, `client.spec.ts`, `client.TEST.js.map`. */
-const TEST_BASENAME = /\.(?:test|spec)\./i;
+/**
+ * `client.test.js`, `client.spec.ts`, `client.TEST.js.map`, and the `-d`
+ * type-test variants `client.test-d.ts` / `client.spec-d.js`.
+ *
+ * The `-d` arm matters because `*.test-d.ts` is vitest's own default naming
+ * convention for type tests (`typecheck.include` defaults to
+ * `**\/*.test-d.?(c|m)[jt]s?(x)`), and a `tsconfig.json` excluding only
+ * `src/**\/*.test.ts` does not match it — so `tsc` emits `client.test-d.js`,
+ * `client.test-d.d.ts` and `client.test-d.js.map` straight into `dist/`.
+ * `-d` must be followed by the extension dot, so `client.test-data.js` is not
+ * a match.
+ */
+const TEST_BASENAME = /\.(?:test|spec)(?:-d)?\./i;
 
 /**
  * Classify one tarball entry path (POSIX, relative to the package root, as
@@ -43,20 +58,23 @@ const TEST_BASENAME = /\.(?:test|spec)\./i;
  * Returns `null` for anything a package may legitimately publish, or
  * `{ path, rule }` naming the rule that flagged it. The rules, in order:
  *
- *   1. `test-dir`  — a directory segment named `test`, `tests`, `__test__` or
- *      `__tests__` (case-insensitive), whatever the file's extension. Nothing
- *      a package publishes belongs under a directory with one of those names.
+ *   1. `test-dir`  — a directory segment named `test`, `tests`, `__test__`,
+ *      `__tests__` or `__mocks__` (case-insensitive), whatever the file's
+ *      extension. Nothing a package publishes belongs under a directory with
+ *      one of those names.
  *   2. `spec-dir`  — a directory segment named `spec`, `specs`, `__spec__` or
  *      `__specs__` (case-insensitive), for code files only.
- *   3. `test-file` — a basename containing `.test.` or `.spec.`
- *      (case-insensitive), for code files only. This is the shape `tsc` emits
- *      from `src/*.test.ts`: `.js`, `.d.ts`, `.js.map`.
+ *   3. `test-file` — a basename containing `.test.`, `.spec.`, `.test-d.` or
+ *      `.spec-d.` (case-insensitive), for code files only. These are the
+ *      shapes `tsc` emits from `src/*.test.ts` and `src/*.test-d.ts`: `.js`,
+ *      `.d.ts`, `.js.map`, `.d.ts.map`.
  *
  * Deliberately NOT covered, and not claimed anywhere: separator variants such
- * as `client-test.js` and `client_test.js`. No toolchain in this repo emits
- * them from a `*.test.ts` source, and they are as likely to be a legitimate
- * module name as a leak. Nor are non-code files outside a `test/` directory —
- * see CODE_FILE above.
+ * as `client-test.js` and `client_test.js`, and prefix-only variants such as
+ * `client.test-data.js`, where `-d` is not followed by the extension dot. No
+ * toolchain in this repo emits them from a `*.test.ts` or `*.test-d.ts`
+ * source, and they are as likely to be a legitimate module name as a leak.
+ * Nor are non-code files outside a `test/` directory — see CODE_FILE above.
  */
 export function classifyEntry(path) {
   if (typeof path !== 'string' || path === '') {
@@ -81,9 +99,9 @@ export function findTestArtifacts(paths) {
 
 /** Human-readable reason, used in the gate's failure output. */
 export const RULE_DESCRIPTIONS = {
-  'test-dir': 'lives under a test/ directory',
+  'test-dir': 'lives under a test/ or __mocks__/ directory',
   'spec-dir': 'code file under a spec/ directory',
-  'test-file': '.test. / .spec. module',
+  'test-file': '.test. / .spec. / .test-d. / .spec-d. module',
 };
 
 /**
@@ -196,4 +214,66 @@ export function declaredEntryPoints(manifest) {
     seen.add(normalized);
   }
   return [...seen].sort();
+}
+
+/**
+ * A TypeScript source file that is a test, and therefore must be both kept out
+ * of `dist/` and kept inside some program that typechecks it.
+ *
+ * Matches the `.test.` / `.spec.` / `.test-d.` / `.spec-d.` family of
+ * `classifyEntry`'s rule 3, restricted to TypeScript: these are sources, not
+ * emitted artifacts. `*.test-d.ts` is included because it is vitest's own
+ * default naming convention for type tests, and because `vitest run` does not
+ * typecheck those files any more than it typechecks `*.test.ts`:
+ * `typecheck.include` applies only under `--typecheck`, which no package here
+ * passes.
+ */
+const TEST_SOURCE = /\.(?:test|spec)(?:-d)?\.[cm]?tsx?$/i;
+
+/** Is this basename a TypeScript test source? */
+export function isTestSource(basename) {
+  if (typeof basename !== 'string') return false;
+  return TEST_SOURCE.test(basename);
+}
+
+/**
+ * Every config path a package script passes to `tsc` via `-p` / `--project`.
+ *
+ * Check C used to accept any `typecheck` script whose text *contained*
+ * `tsconfig.test.json`. `tsc -p tsconfig.json # tsconfig.test.json` satisfied
+ * that substring test while typechecking nothing but the build program — npm
+ * runs scripts through `sh`, which drops the comment before `tsc` ever sees
+ * it. Reading the actual argument closes that hole.
+ *
+ * Everything from the first `#`-initial token on is treated as a shell comment
+ * and ignored. A `#` inside quotes is not really a comment, but misreading one
+ * can only hide a `-p`, which makes the gate fail rather than pass.
+ */
+export function typecheckProjects(script) {
+  if (typeof script !== 'string') return [];
+
+  const found = [];
+  const tokens = script.split(/\s+/).filter(Boolean);
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token.startsWith('#')) break;
+
+    const inline = /^(?:-p|--project)=(.+)$/.exec(token);
+    if (inline) {
+      found.push(inline[1]);
+      continue;
+    }
+    if (token === '-p' || token === '--project') {
+      const value = tokens[i + 1];
+      if (value !== undefined && !value.startsWith('-') && !value.startsWith('#')) {
+        found.push(value);
+        i += 1;
+      }
+    }
+  }
+
+  return found
+    .map((v) => v.replace(/^["']|["']$/g, '').replace(/^\.\//, ''))
+    .filter((v) => v !== '');
 }
