@@ -1,0 +1,215 @@
+---
+title: BKey Proof of Me for Zoom
+sidebarTitle: Zoom app
+description: Add, use and remove the BKey Proof of Me app for Zoom. It shows a verified badge for the person you are meeting, proven with facial biometrics on their phone.
+---
+
+<Note>
+**Available after Zoom approves the app listing.** BKey Proof of Me is not in
+the Zoom App Marketplace yet. This page describes the app as designed, so you
+know what to expect when it is listed.
+</Note>
+
+BKey Proof of Me is a Zoom app that shows you a **verified badge** for someone
+in your meeting. You ask a participant to verify. Their phone asks them for a
+quick face scan in the BKey app. When they complete it, a badge appears next to
+their name in your panel.
+
+Each proof is bound to the meeting you are in. A proof made for a different
+meeting is rejected here, even when its signature is valid, so a proof cannot
+be forwarded from another call.
+
+## What the badge tells you
+
+A green **Verified** badge means:
+
+- Someone completed a live facial-biometric scan in the BKey app, on the phone
+  registered to the BKey account you asked.
+- That phone signed a proof for **this** Zoom meeting. Before showing the
+  badge, the panel checked the signature, that the proof names this meeting,
+  and that the proof is fresh.
+- The badge shows the email address you asked and the time of verification.
+
+What the badge does **not** tell you:
+
+- **That the person on your screen is the person who scanned.** The scan
+  happens on their phone, not in the Zoom video. The badge does not compare the
+  face in the video with the face that was scanned, and it does not analyse the
+  video for deepfakes. Use it together with what you see and hear.
+- **Their legal name or identity documents.** BKey does not check an ID
+  document for this badge. It proves control of a BKey account, not a legal
+  identity.
+- **Their Zoom display name.** The name shown in the panel is not part of the
+  proof. Only the BKey account is.
+- **That it is still them later.** The badge is a point in time. It turns grey
+  30 minutes after verification and is never re-run automatically. Ask again
+  if you need a current proof.
+- **That what they ask of you is legitimate.** A verified person can still ask
+  for something you should confirm through your usual channels.
+
+## Before you start
+
+You need:
+
+- The **Zoom desktop app** for Windows or macOS. Zoom does not let you add
+  apps from the Zoom mobile app.
+- **Zoom Apps turned on** for your Zoom account. On a company account, an admin
+  may have to turn on Zoom Apps, or approve BKey Proof of Me, before you can
+  add it.
+
+You do not need the BKey app to ask someone to verify.
+
+The person you ask needs:
+
+- The **BKey app on their iPhone**, signed in, with their face set up in BKey.
+- To tell you the **email address of their BKey account**. You send the request
+  to that address.
+
+They do not need to add the Zoom app.
+
+## Add the app
+
+1. Sign in to the [Zoom App Marketplace](https://marketplace.zoom.us/) with
+   your Zoom account.
+2. Search for **BKey Proof of Me** and open its listing.
+3. Click **Add**.
+4. Review the permissions Zoom shows you, and authorize the app.
+
+If you see **Request** instead of **Add**, your Zoom account's owner or admin
+has to approve the app first. Click **Request** to send them a request.
+
+You can also add the app from the **Marketplace** tab of the Zoom desktop app,
+or during a meeting from **Apps** in the meeting controls.
+
+Having trouble? See [Troubleshooting](#troubleshooting).
+
+## Open it in a meeting
+
+1. Start or join a meeting in the Zoom desktop app.
+2. In the meeting controls, click **Apps**. If you do not see it, look under
+   **More**.
+3. Click **My Apps**, then **BKey Proof of Me**. It opens in the side panel.
+
+The panel reads the meeting's ID from Zoom and binds your requests to it. If
+Zoom cannot tell the panel which meeting it is in, the panel blocks
+verification rather than guess.
+
+## Ask someone to verify
+
+1. In the panel, enter the participant's name and the email address of their
+   BKey account.
+2. Click **Ask to verify**.
+3. Tell them to check their phone. The BKey app shows them who is asking, the
+   meeting, and that only their presence is shared. They tap
+   **Begin verification** and complete the face scan.
+4. Their badge turns green a few seconds after the scan.
+
+A request stays open for about a minute. If it lapses, send a new one.
+
+### What each state means
+
+| State | What it means | What to do |
+|---|---|---|
+| **Not verified yet** | You have not asked this person in this meeting. | Click **Ask to verify**. |
+| **Requested** | The request is waiting on their phone. | Ask them to open the BKey app. If nothing changes after about a minute, ask again. |
+| **Verified**, with their email address and the time | They completed the face scan, and the proof checked out for this meeting. | Nothing. |
+| **Verified**, greyed out | More than 30 minutes have passed since they verified. | Ask again if you need a current proof. |
+| **Couldn't verify** | A proof came back but failed a check (for example, it was made for a different meeting), or the panel could not reach BKey. | Click **Retry**. If it happens again, [contact support](#contact-support). |
+
+A request that is declined, and a request to an address with no BKey account,
+both stay at **Requested**. BKey does not reveal whether an email address
+belongs to a BKey user.
+
+### For the person being asked
+
+The request appears in the BKey app with the meeting and **Presence only**
+under what is shared. **Begin verification** starts a short face scan.
+**Not now** declines, and no proof is shared.
+
+## Remove the app
+
+1. Sign in to the [Zoom App Marketplace](https://marketplace.zoom.us/).
+2. In the bottom-left corner, click **My Library**.
+3. Find **BKey Proof of Me**.
+4. In the **Actions** column, click the **More** icon, then click **Remove**.
+5. Optionally choose a reason, then click **Remove** to confirm.
+
+In the Zoom desktop app, the same steps start from the **Marketplace** tab
+(under **More** if you do not see it).
+
+If your Marketplace shows **Manage** in the top-right corner instead, click
+**Manage**, then **Added Apps**, find BKey Proof of Me, and click **Remove**.
+
+If a Zoom admin added the app for your whole account, ask the admin to remove
+it.
+
+Zoom's own instructions:
+[Adding and removing Marketplace Apps for personal use](https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0062865).
+
+### What removing the app does
+
+- It deauthorizes the app for your Zoom account. Zoom revokes the access you
+  granted when you added the app, and notifies BKey that you removed it.
+- The panel no longer opens in your meetings, and you cannot ask anyone to
+  verify through it.
+- Nothing changes for the people you asked. Their BKey accounts and the BKey
+  app are not affected.
+- Verifications that were already completed are not undone or deleted. See
+  [How your data is handled](#how-your-data-is-handled).
+- You can add the app again at any time.
+
+## How your data is handled
+
+The app asks Zoom for the meeting's unique ID, to bind each proof to this
+meeting, and for the meeting's topic, to show which meeting the panel is in. It
+does not ask Zoom for your meeting's audio, video or chat.
+
+The face scan runs in the BKey app on the other person's phone. The proof your
+panel receives contains no image of their face and no biometric data.
+
+When you ask someone to verify, BKey records the request and its result: the
+BKey account that was asked, the meeting the proof is bound to, the time, and
+the signed proof. BKey keeps the same kind of record for other approvals made
+in the BKey app.
+
+Removing the Zoom app does not delete the records of verifications that were
+already completed, because each one is an approval the other person signed on
+their own phone. The
+[privacy policy](https://bkey.id/privacy#meeting-attestation) explains how long
+BKey keeps these records and how to exercise your data rights.
+
+## Troubleshooting
+
+**I don't see Apps in the meeting controls.** Look under **More**. If it is
+not there, Zoom Apps may be turned off for your account. Ask your Zoom admin to
+turn them on.
+
+**The app won't open in a meeting.** The meeting host can suspend Zoom Apps
+for the whole meeting from Zoom's in-meeting security controls. Ask the host
+whether apps are allowed in this meeting.
+
+**I see Request instead of Add.** Your Zoom account's owner or admin has to
+approve the app. Click **Request** and wait for their approval.
+
+**I can't add the app on my phone.** Zoom does not let you add apps from the
+Zoom mobile app. Add it from the Marketplace website or the Zoom desktop app.
+
+**The panel says verification is blocked.** The panel verifies only when Zoom
+tells it which meeting it is in. Close the panel and open it again from
+**Apps** inside the meeting.
+
+**The badge stays on Requested.** Check that you entered the email address of
+their BKey account. Ask them to open the BKey app. After about a minute, ask
+again.
+
+**I'm told to wait before sending another request.** BKey limits how many
+requests you can send, and how often one person can be asked, in a short
+period. Wait about ten minutes and try again.
+
+**Couldn't verify keeps coming back.** [Contact support](#contact-support) and
+include the approximate time of the request.
+
+## Contact support
+
+Email [support@bkey.id](mailto:support@bkey.id) or visit
+[bkey.id/support](https://bkey.id/support).
