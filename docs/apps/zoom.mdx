@@ -12,8 +12,8 @@ know what to expect when it is listed.
 
 BKey Proof of Me is a Zoom app that shows you a **verified badge** for someone
 in your meeting. You ask a participant to verify. Their phone asks them for a
-quick face scan in the BKey app. When they complete it, a badge appears next to
-their name in your panel.
+quick face scan in the BKey app. When the scan is completed, a badge appears
+next to the name you entered in your panel.
 
 Each proof is bound to the meeting you are in. A proof made for a different
 meeting is rejected here, even when its signature is valid, so a proof cannot
@@ -99,32 +99,47 @@ verification rather than guess.
 1. In the panel, enter the participant's name and the email address of their
    BKey account.
 2. Click **Ask to verify**.
-3. Tell them to check their phone. The BKey app shows them who is asking, the
-   meeting, and that only their presence is shared. They tap
-   **Begin verification** and complete the face scan.
-4. Their badge turns green a few seconds after the scan.
-
-A request stays open for about a minute. If it lapses, send a new one.
+3. Tell them in the meeting that you have just sent the request. The BKey app
+   on their phone says that a verification partner is asking, and shows a
+   technical ID for the requesting app, an internal ID for the meeting, and
+   **Presence only** under what is shared. It does not show which participant
+   asked, so telling them yourself is how they know the request is yours.
+4. They tap **Begin verification** and complete the face scan. They have under
+   a minute to do this before the request lapses on their phone.
+5. The badge turns green a few seconds after the scan.
 
 ### What each state means
 
 | State | What it means | What to do |
 |---|---|---|
-| **Not verified yet** | You have not asked this person in this meeting. | Click **Ask to verify**. |
-| **Requested** | The request is waiting on their phone. | Ask them to open the BKey app. If nothing changes after about a minute, ask again. |
-| **Verified**, with their email address and the time | They completed the face scan, and the proof checked out for this meeting. | Nothing. |
-| **Verified**, greyed out | More than 30 minutes have passed since they verified. | Ask again if you need a current proof. |
-| **Couldn't verify** | A proof came back but failed a check (for example, it was made for a different meeting), or the panel could not reach BKey. | Click **Retry**. If it happens again, [contact support](#contact-support). |
+| **Not verified yet** | You have not sent a request to this address in this meeting. | Click **Ask to verify**. |
+| **Requested** | The request was sent and the panel is waiting for a result. You cannot ask again while a row is in this state. | Ask them to open the BKey app and answer within a minute. If no result arrives, the row changes to **Couldn't verify** after about ten minutes. |
+| **Verified**, with the email address and the time | Someone completed the face scan on the phone of the BKey account you asked, and the proof checked out for this meeting. | Nothing. |
+| **Verified**, greyed out | More than 30 minutes have passed since the verification. | Ask again if you need a current proof. |
+| **Couldn't verify** | No result arrived within about ten minutes (the request was declined, not answered in time, or could not be delivered); a proof came back but failed a check (for example, it was made for a different meeting); the panel could not reach BKey; or too many requests were sent. Hold the pointer over the badge to see the reason, when there is one. | Check the email address, tell them you are asking again, and click **Retry**. If requests to this person keep failing, see [Troubleshooting](#troubleshooting) before you retry. |
 
-A request that is declined, and a request to an address with no BKey account,
-both stay at **Requested**. BKey does not reveal whether an email address
-belongs to a BKey user.
+These requests all look the same in the panel: one that is declined, one that
+is not answered in time, one to an address with no BKey account, and one to an
+address that has been asked too often in the last hour. Each stays at
+**Requested** and then changes to **Couldn't verify**. BKey does not reveal
+whether an email address belongs to a BKey user, or why a request got no
+answer.
 
 ### For the person being asked
 
-The request appears in the BKey app with the meeting and **Presence only**
-under what is shared. **Begin verification** starts a short face scan.
-**Not now** declines, and no proof is shared.
+The request appears in the BKey app as coming from a verification partner, with
+an ID for the meeting and **Presence only** under what is shared. It does not
+say which participant sent it. Verify only when the person you are talking to
+has just asked you to, in this meeting.
+
+**Begin verification** starts a short face scan. **Not now** declines, and no
+proof is shared.
+
+Despite the **Presence only** label, a proof you share identifies your BKey
+account to the person and the app that asked: it is signed under a permanent
+identifier for your account, which is the same in every proof you make. It
+does not contain an image of your face or any biometric data. See
+[How your data is handled](#how-your-data-is-handled).
 
 ## Remove the app
 
@@ -167,6 +182,12 @@ does not ask Zoom for your meeting's audio, video or chat.
 The face scan runs in the BKey app on the other person's phone. The proof your
 panel receives contains no image of their face and no biometric data.
 
+The proof does identify the BKey account that answered. It is signed under a
+permanent identifier for that account, which is the same in every proof the
+account makes. So a proof is more than a presence signal: two proofs from the
+same account can be linked to each other, including proofs given to different
+requesters.
+
 When you ask someone to verify, BKey records the request and its result: the
 BKey account that was asked, the meeting the proof is bound to, the time, and
 the signed proof. BKey keeps the same kind of record for other approvals made
@@ -198,16 +219,24 @@ Zoom mobile app. Add it from the Marketplace website or the Zoom desktop app.
 tells it which meeting it is in. Close the panel and open it again from
 **Apps** inside the meeting.
 
-**The badge stays on Requested.** Check that you entered the email address of
-their BKey account. Ask them to open the BKey app. After about a minute, ask
-again.
+**The badge stays on Requested.** The panel waits about ten minutes for a
+result, and you cannot ask again until then. Check that you entered the email
+address of their BKey account, and ask them to open the BKey app: they have
+under a minute to answer. If the time runs out, the badge changes to
+**Couldn't verify**, and you can click **Retry**.
 
-**I'm told to wait before sending another request.** BKey limits how many
-requests you can send, and how often one person can be asked, in a short
-period. Wait about ten minutes and try again.
+**Requests to one person keep ending in Couldn't verify.** BKey limits how
+often you can send requests, how often one address can be asked, and how many
+requests the app can send in total. Depending on which limit is reached,
+**Couldn't verify** appears straight away, or the request is never delivered to
+their phone: it shows as **Requested** and then **Couldn't verify**, like any
+unanswered request. Each **Retry** counts as a new request. If requests to one
+person keep failing, wait up to an hour before asking that address again.
 
-**Couldn't verify keeps coming back.** [Contact support](#contact-support) and
-include the approximate time of the request.
+**A proof keeps failing its checks.** If **Couldn't verify** comes back after
+the person has completed the face scan, and **Retry** gives the same result,
+[contact support](#contact-support) and include the approximate time of the
+request.
 
 ## Contact support
 
