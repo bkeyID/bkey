@@ -43,6 +43,12 @@
               "guides/vault-secrets",
               "guides/mcp-integration"
             ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "apps/zoom"
+            ]
           }
         ]
       },
