@@ -1,7 +1,7 @@
 ---
 title: BKey Proof of Me for Zoom
 sidebarTitle: Zoom app
-description: Add, use and remove the BKey Proof of Me app for Zoom. It shows whether someone in your meeting completed a face scan on their phone for this meeting.
+description: Add, use and remove the BKey Proof of Me app for Zoom. It shows whether a face scan was completed, for this meeting, on the phone of the BKey account you ask.
 ---
 
 <Note>
@@ -9,9 +9,9 @@ description: Add, use and remove the BKey Proof of Me app for Zoom. It shows whe
 the Zoom App Marketplace yet. This page describes the panel as it works today.
 </Note>
 
-BKey Proof of Me is a Zoom app that shows you whether someone in your meeting
-has verified. You ask a participant to verify. Their phone asks them for a
-quick face scan in the BKey app. When the scan is completed, the panel shows
+BKey Proof of Me is a Zoom app for asking a participant in your meeting to
+verify. The phone of the BKey account you ask shows a request for a quick
+face scan in the BKey app. When the scan is completed, the panel shows
 **Authenticated** next to the name you entered.
 
 Each proof is bound to the meeting you are in. A proof made for a different
@@ -128,7 +128,7 @@ verification rather than guess.
 | **Not verified yet** | You have added this person and have not asked them yet. | Click **Ask to verify**. |
 | **Requested** | The request was sent and the panel is waiting for a result. You cannot ask again while a row is in this state. | Ask them to open the BKey app and answer within a minute. If no result arrives, the row changes to **Couldn't verify** after about ten minutes. |
 | **Authenticated**, with the verification level | Someone completed the face scan on the phone of the BKey account you asked, and the proof checked out for this meeting. The row shows a check mark instead of a button. | Nothing. To ask again later, add the person again. |
-| **Couldn't verify** | No result arrived within about ten minutes (the request was declined, not answered in time, or could not be delivered); a proof came back but failed a check (for example, it was made for a different meeting); the request was addressed to an email address; the panel could not reach BKey; or too many requests were sent. Hold the pointer over the badge to see the reason, when there is one. | Check the BKey identifier, tell them you are asking again, and click **Retry**. If requests to this person keep failing, see [Troubleshooting](#troubleshooting) before you retry. |
+| **Couldn't verify** | No result arrived within about ten minutes (the request was declined, not answered in time, or could not be delivered); a proof came back but failed a check (for example, it was made for a different meeting); the request was addressed to an email address; the panel could not reach BKey; or too many requests were sent. Hold the pointer over the badge to see the reason, when there is one. | Check the BKey identifier. If it is wrong or is an email address, add the person again with their BKey identifier, because **Retry** sends the request to the same one. Otherwise, tell them you are asking again, and click **Retry**. If requests to this person keep failing, see [Troubleshooting](#troubleshooting) before you retry. |
 
 These requests all look the same in the panel: one that is declined, one that
 is not answered in time, and one sent to an identifier that has no BKey
@@ -243,11 +243,14 @@ can click **Retry**.
 
 **Requests to one person keep ending in Couldn't verify.** Check that you
 entered their BKey identifier and not an email address: BKey does not accept
-requests addressed by email yet. The panel also limits how many requests you
-can send, and how many one person can receive, in a ten-minute window. When a
-limit is reached, **Couldn't verify** appears straight away, and holding the
-pointer over it shows the reason. Each **Retry** counts as a new request. Wait
-ten minutes before asking that person again.
+requests addressed by email yet. **Retry** sends the request to the same
+identifier or address again, so if that was wrong, add the person again with
+their BKey identifier. The panel also limits how many requests you can send,
+and how many one person can receive, in a ten-minute window, and BKey limits
+how many requests the app can send in total. When the panel's limit is
+reached, **Couldn't verify** appears straight away, and holding the pointer
+over it shows the reason. Each **Retry** counts as a new request. Wait ten
+minutes before asking that person again.
 
 **A proof keeps failing its checks.** If **Couldn't verify** comes back after
 the person has completed the face scan, and **Retry** gives the same result,
