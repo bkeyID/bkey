@@ -148,7 +148,9 @@ proof is shared.
 Despite the **Presence only** label, a proof you share identifies your BKey
 account to the person and the app that asked: it is signed under a permanent
 identifier for your account, which is the same in every proof you make. It
-does not contain an image of your face or any biometric data. See
+contains no image of your face and no liveness or face-match scores. It does
+say which kind of biometric check was used, when the scan happened, and a value
+that identifies your current BKey enrollment. See
 [How your data is handled](#how-your-data-is-handled).
 
 ## Remove the app
@@ -174,7 +176,7 @@ Zoom's own instructions:
 ### What removing the app does
 
 - It deauthorizes the app for your Zoom account. Zoom revokes the access you
-  granted when you added the app, and notifies BKey that you removed it.
+  granted when you added the app. BKey is not notified of the removal.
 - The panel no longer opens in your meetings, and you cannot ask anyone to
   verify through it.
 - Nothing changes for the people you asked. Their BKey accounts and the BKey
@@ -190,13 +192,17 @@ meeting, and for the meeting's topic, to show which meeting the panel is in. It
 does not ask Zoom for your meeting's audio, video, chat or participant list.
 
 The name you type for each person stays in your panel and is not sent to BKey.
-The BKey identifier you type is sent to BKey with the request. The list of
+The BKey identifier you type is sent to BKey with the request. An email
+address entered with **Use email instead** is also sent to BKey, which
+rejects it. The list of
 people and their results is kept only while the panel is open. To limit
 repeated requests, the app's server holds your IP address and the identifiers
 you ask, in memory.
 
 The face scan runs in the BKey app on the other person's phone. The proof your
-panel receives contains no image of their face and no biometric data.
+panel receives contains no image of their face and no liveness or face-match
+scores. It does say which kind of biometric check was used, when the scan
+happened, and a value that identifies their current BKey enrollment.
 
 The proof does identify the BKey account that answered. It is signed under a
 permanent identifier for that account, which is the same in every proof the
@@ -212,8 +218,8 @@ in the BKey app.
 Removing the Zoom app does not delete the records of verifications that were
 already completed, because each one is an approval the other person signed on
 their own phone. The
-[privacy policy](https://bkey.id/privacy#meeting-attestation) explains how long
-BKey keeps these records and how to exercise your data rights.
+[privacy policy](https://bkey.id/privacy#meeting-attestation) explains what
+BKey keeps for these checks and how to exercise your data rights.
 
 ## Troubleshooting
 
@@ -247,7 +253,8 @@ requests addressed by email yet. **Retry** sends the request to the same
 identifier or address again, so if that was wrong, add the person again with
 their BKey identifier. The panel also limits how many requests you can send,
 and how many one person can receive, in a ten-minute window, and BKey limits
-how many requests the app can send in total. When the panel's limit is
+how many requests the app can send in total (60 a minute across all users of
+the app). When the panel's limit is
 reached, **Couldn't verify** appears straight away, and holding the pointer
 over it shows the reason. Each **Retry** counts as a new request. Wait ten
 minutes before asking that person again.
