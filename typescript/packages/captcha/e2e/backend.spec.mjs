@@ -43,3 +43,35 @@ test('unsupported backend context is rejected before creation',async({page})=>{
  });
  expect(error).toContain('action');
 });
+
+for (const outcome of ['approve', 'remove', 'expire']) {
+ test(`rate-limited polling can ${outcome} without replacing the request`,async({page},info)=>{
+  await setup(page);
+  let calls=0;const times=[];
+  await page.route('https://api.bkey.id/v1/captcha/requests/*/status',async route=>{
+   calls++;times.push(Date.now());
+   expect(route.request().headers()['x-bkey-poll-token']).toBe(poll);
+   if(calls===1) await route.fulfill({status:429,headers:{'Retry-After':outcome==='approve'?'2':'90'},json:{error:'rate limited'}});
+   else await route.fulfill({json:{mode:'human',requestId:id,status:'approved',token:'retried-token',expiresAt:new Date(Date.now()+60000).toISOString()}});
+  });
+  await page.getByRole('checkbox').click();
+  await expect.poll(()=>calls).toBe(1);
+  await expect(page.locator('.shell')).toHaveAttribute('data-state','pending');
+  if(outcome==='approve') {
+   await expect.poll(()=>page.evaluate(()=>window.result)).toBe('retried-token');
+   expect(times[1]-times[0]).toBeGreaterThanOrEqual(1900);
+  } else if(outcome==='remove') {
+   await page.evaluate(()=>window.sdk.remove(window.widget));
+   await page.waitForTimeout(2200);
+   expect(calls).toBe(1);
+  } else {
+   await page.clock.install();
+   await page.clock.fastForward(61000);
+   await expect(page.locator('.shell')).toHaveAttribute('data-state','expired');
+   await page.clock.fastForward(40000);
+   expect(calls).toBe(1);
+   expect(await page.evaluate(()=>window.result)).toBeUndefined();
+  }
+  await page.screenshot({path:info.outputPath(`rate-limit-${outcome}.png`)});
+ });
+}

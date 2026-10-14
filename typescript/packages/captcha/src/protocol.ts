@@ -1,5 +1,9 @@
 import type { AgeRequirement, CaptchaCheck, CaptchaRequest, CaptchaStatus } from './types.js';
 
+/** A temporary HTTP limit. Keep the request credential until retry or expiry. */
+export class CaptchaRateLimitError extends Error {
+  constructor(readonly retryAfterMs: number) { super('Bkey: verification rate limited.'); }
+}
 export class CaptchaProtocolError extends Error {
   constructor(message: string) { super(message); this.name = 'CaptchaProtocolError'; }
 }

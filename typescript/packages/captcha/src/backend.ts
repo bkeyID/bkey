@@ -1,5 +1,5 @@
 import type { Transport } from './sdk.js';
-import { CaptchaProtocolError, parseCaptchaRequest } from './protocol.js';
+import { CaptchaProtocolError, CaptchaRateLimitError, parseCaptchaRequest } from './protocol.js';
 
 export const DEFAULT_API_URL = 'https://api.bkey.id';
 export function backendUrl(value: string): string {
@@ -17,6 +17,13 @@ export function createBackendTransport(apiUrl: string): Transport {
     const response = await fetch(`${apiUrl}/v1/captcha/requests${path}`, {
       ...options, credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer',
     });
+    if (response.status === 429) {
+      const header = response.headers.get('Retry-After')?.trim();
+      const delay = header && /^\d+$/.test(header)
+        ? Number(header) * 1000
+        : header ? Date.parse(header) - Date.now() : NaN;
+      throw new CaptchaRateLimitError(Number.isFinite(delay) ? Math.min(2_147_483_647, Math.max(1000, delay)) : 5000);
+    }
     if (!response.ok) throw new Error('Bkey: verification request failed.');
     const body: unknown = await response.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new CaptchaProtocolError('Invalid backend response.');

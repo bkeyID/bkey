@@ -1,4 +1,4 @@
-import { CaptchaProtocolError, parseCaptchaRequest, parseCaptchaStatus } from './protocol.js';
+import { CaptchaProtocolError, CaptchaRateLimitError, parseCaptchaRequest, parseCaptchaStatus } from './protocol.js';
 import { CaptchaView } from './view.js';
 import type { CaptchaCheck, CaptchaErrorCode, CaptchaRequest, CaptchaState, CaptchaTransport } from './types.js';
 
@@ -30,7 +30,7 @@ export class CaptchaController {
   }
   private stop(): void {
     this.generation++; this.abort?.abort(); this.abort = undefined; this.transport.release?.();
-    clearTimeout(this.pollTimer); clearInterval(this.expiryTimer);
+    clearTimeout(this.pollTimer); clearInterval(this.expiryTimer); this.retryNotBefore = 0;
   }
   reset(): void {
     this.stop(); this.request = undefined; this.check = undefined; this.response = ''; this.responseExpiry = 0; this.expanded = false;
@@ -79,15 +79,17 @@ export class CaptchaController {
     });
   }
   private polling = false;
-  private schedule(id: number): void {
+  private retryNotBefore = 0;
+  private schedule(id: number, delay = this.request?.pollAfterMs ?? 1500): void {
     if (this.polling) return;
     clearTimeout(this.pollTimer);
-    this.pollTimer = setTimeout(() => void this.poll(id), this.request?.pollAfterMs ?? 1500);
+    this.pollTimer = setTimeout(() => void this.poll(id), Math.max(delay, this.retryNotBefore - Date.now()));
   }
   private async poll(id: number): Promise<void> {
     const request = this.request;
     if (!request || !this.active(id) || this.polling) return;
     this.polling = true;
+    let retryAfterMs: number | undefined;
     try {
       const raw = await this.call(signal => this.transport.status({ requestId: request.requestId, signal }));
       if (!this.active(id)) return;
@@ -100,10 +102,18 @@ export class CaptchaController {
         if (this.response) this.emit({ type: 'success', response: this.response });
       } else if (status.status === 'denied' || status.status === 'expired') this.finish(status.status);
       else this.setState(this.state === 'scanned' ? 'scanned' : status.status);
-    } catch (error) { if (this.active(id)) this.fail(error instanceof CaptchaProtocolError ? 'invalid-response' : 'request-failed'); }
+    } catch (error) {
+      if (this.active(id)) {
+        if (error instanceof CaptchaRateLimitError) {
+          retryAfterMs = error.retryAfterMs;
+          this.retryNotBefore = Date.now() + retryAfterMs;
+        }
+        else this.fail(error instanceof CaptchaProtocolError ? 'invalid-response' : 'request-failed');
+      }
+    }
     finally {
       this.polling = false;
-      if (this.active(id) && (this.state === 'pending' || this.state === 'scanned')) this.schedule(id);
+      if (this.active(id) && (this.state === 'pending' || this.state === 'scanned')) this.schedule(id, retryAfterMs);
     }
   }
   private tick(): void {
