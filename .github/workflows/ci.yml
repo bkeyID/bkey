@@ -38,7 +38,18 @@ jobs:
       # bump can raise the real floor again with nothing going red.
       - run: node scripts/check-engines.mjs
       - run: pnpm build
+      - name: Install CAPTCHA test browsers
+        run: pnpm --filter @bkey/captcha exec playwright install --with-deps chromium webkit
       - run: pnpm test
+      - name: Save CAPTCHA browser test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: captcha-browser-tests-node-${{ matrix.node-version }}
+          path: |
+            typescript/packages/captcha/playwright-report/
+            typescript/packages/captcha/test-results/
+          retention-days: 14
       # Typechecks the test sources that each package's build tsconfig
       # excludes from dist/. Without this they are compiled by nothing:
       # `vitest run` executes tests without typechecking them, and its

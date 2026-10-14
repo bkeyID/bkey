@@ -16,6 +16,13 @@ npm install @bkey/cli -g # CLI tool
 
 **Node.js:** the libraries (`@bkey/sdk`, `@bkey/login`, `@bkey/node`) need Node 20.19+; `@bkey/cli` needs Node 22.12+. Node 20 reached end of life on 2026-04-30 — we build and publish on Node 22 and also test on Node 24.
 
+### CAPTCHA widget (in development)
+
+The [`@bkey/captcha` browser SDK](./typescript/packages/captcha/README.md)
+includes the human-check backend connection, QR rendering, and an interactive preview.
+Age UI is available for demos and custom transports; live age approval is not implemented.
+The package is not published yet.
+
 ### Python
 
 ```bash

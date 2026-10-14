@@ -1,0 +1,274 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bkey verification integration guide</title><style>
+:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#fafaf9;color:#28252e;font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:1000px;margin:56px auto;padding:0 28px 64px}h1{font-size:36px;letter-spacing:-1px}h2{font-size:24px;margin-top:48px;padding-bottom:10px;border-bottom:1px solid #e0dce5;line-height:1.3}h3{line-height:1.4}p{margin:16px 0}a{color:#6554c0;text-underline-offset:3px}code{font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;background:#eeebf1;padding:2px 5px;border-radius:4px}pre{padding:20px;border:1px solid #ded9e6;background:#f3f0f5;border-radius:10px;overflow-x:auto;line-height:1.6}pre code{padding:0;background:none;border-radius:0}table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;font-size:14px;margin:24px 0}th{text-align:left;background:#efecf2}td,th{padding:12px 14px;border:1px solid #ded9e6;vertical-align:top}strong{font-weight:650}li{margin:6px 0}@media(max-width:600px){main{margin-top:28px;padding:0 18px 40px}h1{font-size:28px}body{font-size:15px}}
+</style></head><body><main><h1>@bkey/captcha</h1>
+<p>Bkey browser SDK for human and age checks. One API serves all check types.
+The widget starts at 300 × 65 px, expands to show a QR code, and closes to a
+checkmark after approval. It supports light, dark and automatic themes,
+keyboard controls and reduced motion.</p>
+<p><strong>Status:</strong> The default connection supports live human checks. Age approval remains unimplemented. The standard demo simulates approval; <a href="/demo/live.html">use the live test page</a> for a real backend.</p>
+<h2>Render a check</h2>
+<pre><code class="language-html">&lt;form id=&quot;signup&quot;&gt;
+  &lt;div id=&quot;check&quot;&gt;&lt;/div&gt;
+  &lt;button type=&quot;submit&quot;&gt;Continue&lt;/button&gt;
+&lt;/form&gt;
+</code></pre>
+<pre><code class="language-ts">import * as bkey from &#39;@bkey/captcha&#39;;
+
+
+// Defaults to https://api.bkey.id. No custom transport is needed.
+
+const widgetId = bkey.render(&#39;#check&#39;, {
+  sitekey: &#39;your-public-sitekey&#39;,
+  callback(response) {
+    // The same string is placed in the form&#39;s hidden bkey-response field.
+    // Send it to your server for verification before granting access.
+    console.log(response);
+  },
+  &#39;error-callback&#39;: code =&gt; console.error(code),
+  &#39;expired-callback&#39;: () =&gt; console.log(&#39;Start again&#39;),
+});
+</code></pre>
+<p>Use <code>bkey.configure({ apiUrl: 'https://dev-api.bkey.id' })</code> before rendering to select another deployment. The sitekey must allow the browser hostname. Keep all server secrets out of browser code.</p>
+<p>The SDK creates a request with the sitekey, uses its QR link unchanged, and polls with the private <code>X-Bkey-Poll-Token</code> header. Polling credentials stay in memory and are cleared on completion, failure, reset, or removal. Cookies are omitted.</p>
+<p>Your server must send <code>{ sitekey, clientId, clientSecret, response }</code> to <code>POST /v1/captcha/siteverify</code>, require success, and check the returned hostname before granting access. Each result can be consumed once.</p>
+<p><code>action</code> and <code>cData</code> are supported only by custom transports until the backend supports them.</p>
+<h2>Sitekey policy</h2>
+<p>The app owner configures the required check on the sitekey through authenticated
+app management. These are stored policy values, <strong>not</strong> browser render options:</p>
+<pre><code class="language-ts">{ mode: &#39;human&#39; }
+{ mode: &#39;age&#39;, age: { operator: &#39;gte&#39;, value: 18 } }
+{ mode: &#39;age&#39;, age: { operator: &#39;lte&#39;, value: 12 } }
+{ mode: &#39;age&#39;, age: { operator: &#39;eq&#39;, value: 21 } }
+{ mode: &#39;age&#39;, age: { operator: &#39;range&#39;, min: 12, max: 18 } }
+{ mode: &#39;ageOfMajority&#39; }
+</code></pre>
+<p>There is no default check. The backend must load the stored policy and copy it
+into the request. The widget reads that policy from the create response and uses
+it for labels and status matching. <code>mode</code>, <code>age</code>, and <code>check</code> render options are
+rejected. They are not sent to the transport. Authenticated portal management and
+backend request enforcement are not implemented by this UI package.</p>
+<p>Ages are whole years from 0 to 150. Range endpoints and comparisons are inclusive.
+Exact ages and ranges can disclose personal information. The phone approval flow
+must explain the requested claim before the person approves it.</p>
+<p><code>ageOfMajority</code> asks for adult status without a site-selected country or age.
+The planned service chooses the rule from the visitor&#39;s IP location and returns
+only the result. This package does not locate the visitor or implement those rules.
+An IP location does not establish residence. A future service connection must use
+the visitor&#39;s IP, not the website server&#39;s outgoing IP.</p>
+<h2>API</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>configure({ transport })</code></td>
+<td>Sets the service connection. Remove all widgets before replacing it.</td>
+</tr>
+<tr>
+<td><code>render(container, options)</code></td>
+<td>Creates a widget and returns its ID.</td>
+</tr>
+<tr>
+<td><code>execute(widget?)</code></td>
+<td>Starts an existing widget.</td>
+</tr>
+<tr>
+<td><code>execute(container, options)</code></td>
+<td>Creates and starts a widget in an empty container.</td>
+</tr>
+<tr>
+<td><code>getResponse(widget?)</code></td>
+<td>Returns the opaque response string, or <code>&#39;&#39;</code> before success or after expiry.</td>
+</tr>
+<tr>
+<td><code>isExpired(widget?)</code></td>
+<td>Returns whether the current check or response has expired.</td>
+</tr>
+<tr>
+<td><code>reset(widget?)</code></td>
+<td>Clears the response and starts a new lifecycle.</td>
+</tr>
+<tr>
+<td><code>remove(widget?)</code></td>
+<td>Cancels work and removes the widget and its field. Keeps unrelated content.</td>
+</tr>
+<tr>
+<td><code>ready(callback)</code></td>
+<td>Calls the function when the document is ready.</td>
+</tr>
+</tbody></table>
+<p>A widget target is its returned ID, a container selector, or the container element.
+If omitted, the first active widget is used. Removed or unknown targets throw.
+Containers must be attached to the document. Policy changes belong in authenticated
+app management. Reset creates a new request and reads the current service policy;
+it does not change an existing approval. The internal UI and controller are not public APIs.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Supported values</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>sitekey</code></td>
+<td>Required</td>
+<td>Public site key</td>
+</tr>
+<tr>
+<td><code>theme</code></td>
+<td><code>auto</code></td>
+<td><code>auto</code>, <code>light</code>, <code>dark</code></td>
+</tr>
+<tr>
+<td><code>size</code></td>
+<td><code>normal</code></td>
+<td><code>normal</code>, <code>flexible</code></td>
+</tr>
+<tr>
+<td><code>execution</code></td>
+<td><code>render</code></td>
+<td><code>render</code>, <code>execute</code></td>
+</tr>
+<tr>
+<td><code>action</code></td>
+<td>None</td>
+<td>1–32 letters, digits, <code>_</code> or <code>-</code></td>
+</tr>
+<tr>
+<td><code>cData</code></td>
+<td>None</td>
+<td>1–255 letters, digits, <code>_</code> or <code>-</code></td>
+</tr>
+<tr>
+<td><code>callback</code></td>
+<td>None</td>
+<td><code>(response: string) =&gt; void</code></td>
+</tr>
+<tr>
+<td><code>error-callback</code></td>
+<td>None</td>
+<td><code>(code: string) =&gt; void</code></td>
+</tr>
+<tr>
+<td><code>expired-callback</code></td>
+<td>None</td>
+<td><code>() =&gt; void</code></td>
+</tr>
+<tr>
+<td><code>denied-callback</code></td>
+<td>None</td>
+<td><code>() =&gt; void</code></td>
+</tr>
+<tr>
+<td><code>response-field</code></td>
+<td><code>true</code></td>
+<td>Adds a hidden form field</td>
+</tr>
+<tr>
+<td><code>response-field-name</code></td>
+<td><code>bkey-response</code></td>
+<td>Custom field name</td>
+</tr>
+</tbody></table>
+<p><code>execution: &#39;render&#39;</code> prepares the QR request when the widget is rendered. The
+checkbox opens the QR panel and starts status polling. <code>execution: &#39;execute&#39;</code>
+waits for <code>execute()</code> before creating a request. It disables the checkbox until
+then and shows the neutral label “Verify with bkey” until the service returns
+the policy. Neither execution mode bypasses approval on the phone.</p>
+<p>Reset, denial, errors and expiry clear the response field. Native form reset also
+resets the widget unless the reset event is cancelled. The SDK removes expired
+responses when a form builds its <code>FormData</code>. Server verification is still required.
+The SDK does not block form submission or grant access.</p>
+<h2>Classic script and HTML</h2>
+<p>Host the built <code>dist/api.js</code> file at a URL you control. There is no assumed CDN URL.
+The bundle exposes <code>window.bkey</code>.</p>
+<pre><code class="language-html">&lt;div class=&quot;bkey-captcha&quot;
+     data-sitekey=&quot;your-public-sitekey&quot;
+     data-callback=&quot;onApproved&quot;&gt;&lt;/div&gt;
+&lt;script&gt;
+  function onApproved(response) { console.log(response); }
+  function initBkey() {
+  }
+&lt;/script&gt;
+&lt;script src=&quot;/assets/bkey/api.js?onload=initBkey&quot; async defer&gt;&lt;/script&gt;
+</code></pre>
+<p>Define the service connection before the script loads. The onload function runs
+before automatic rendering of <code>.bkey-captcha</code> containers. To render only through
+JavaScript, add <code>&amp;render=explicit</code> to the script URL and call <code>bkey.render</code> in the
+onload function. <code>data-callback</code> values refer to named functions on <code>window</code>.
+<code>data-mode</code>, <code>data-age</code>, and <code>data-check</code> are rejected.
+Other supported attributes include <code>data-theme</code>, <code>data-size</code>, <code>data-execution</code>,
+<code>data-action</code>, <code>data-cdata</code>, <code>data-response-field</code>, <code>data-response-field-name</code>,
+<code>data-error-callback</code>, <code>data-expired-callback</code> and <code>data-denied-callback</code>.</p>
+<h2>Service connection contract</h2>
+<p>The exported <code>Transport</code> type has two async methods. Both receive the public
+<code>sitekey</code>, optional <code>action</code> and <code>cData</code>, and an <code>AbortSignal</code>. Neither accepts
+a check, age rule, or location override. <code>action</code> and <code>cData</code> do not select policy.
+<code>status</code> also receives <code>requestId</code>. Honor the signal to cancel network work.
+Each call has a 15-second UI timeout, including adapters that ignore cancellation.</p>
+<p><code>create(input)</code> returns:</p>
+<pre><code class="language-json">{
+  &quot;requestId&quot;: &quot;unique-request-id&quot;,
+  &quot;mode&quot;: &quot;age&quot;,
+  &quot;age&quot;: { &quot;operator&quot;: &quot;gte&quot;, &quot;value&quot;: 18 },
+  &quot;qrPayload&quot;: &quot;bkey://captcha?id=unique-request-id&quot;,
+  &quot;expiresAt&quot;: &quot;2027-01-01T12:02:00Z&quot;,
+  &quot;pollAfterMs&quot;: 1500
+}
+</code></pre>
+<p>The QR link is an example of the contract, not a claim about a deployed app route.
+Use the exact link supplied by the service. Only HTTPS and <code>bkey:</code> links are
+accepted; the connection must also enforce trusted hosts. Poll intervals are
+bounded to 1–10 seconds.</p>
+<p><code>status(input)</code> returns the same request ID and check conditions, plus <code>status</code>:
+<code>pending</code>, <code>scanned</code>, <code>approved</code>, <code>denied</code> or <code>expired</code>. Approval must include:</p>
+<pre><code class="language-json">{
+  &quot;requestId&quot;: &quot;unique-request-id&quot;,
+  &quot;mode&quot;: &quot;age&quot;,
+  &quot;age&quot;: { &quot;operator&quot;: &quot;gte&quot;, &quot;value&quot;: 18 },
+  &quot;status&quot;: &quot;approved&quot;,
+  &quot;response&quot;: &quot;opaque-service-issued-response&quot;,
+  &quot;responseExpiresAt&quot;: &quot;2027-01-01T12:07:00Z&quot;
+}
+</code></pre>
+<p>Omit <code>age</code> for <code>human</code> and <code>ageOfMajority</code>. Expiry values are ISO 8601 UTC strings.
+The response is not the request ID. Missing tokens, changed conditions, mismatched
+request IDs and malformed responses do not produce success. Request and response
+expiry are separate. Expired or late replies cannot restore a cleared response.</p>
+<p>These checks protect UI state; they do not verify identity in the browser. The
+future service must load policy from the sitekey, reject browser overrides, bind
+the token to the sitekey, request and saved policy, enforce expiry and single use,
+and provide server-side verification. The website server must verify the expected
+sitekey and required policy, including after configuration changes. A token from
+a weaker sitekey must not grant access. Never trust a browser
+callback or a hidden field alone. The demo uses fake tokens and has no such service.</p>
+<h2>Turnstile integration model</h2>
+<p>The main API follows the common Turnstile method names, token callback and hidden
+field model. It is a single SDK, not a wrapper around a second public element API.
+To migrate, change the loader/import and namespace to Bkey, use a Bkey site key,
+connect the Bkey service, and replace server-side verification. If an existing
+form needs the old field name, set <code>&#39;response-field-name&#39;: &#39;cf-turnstile-response&#39;</code>.
+This changes only the form name; Bkey tokens are not Cloudflare tokens.</p>
+<p>This is a supported subset, not full Cloudflare API or protocol compatibility.
+Features such as compact/invisible widgets, appearance policies and automatic
+retry settings are not supported. Unknown render options throw. The bundle does
+not replace <code>window.turnstile</code>.</p>
+<p>References: <a href="https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/">client rendering</a>,
+<a href="https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/">widget options</a>,
+<a href="https://developers.cloudflare.com/turnstile/get-started/server-side-validation/">server validation</a>.</p>
+<h2>Local development and verification</h2>
+<p>From the <code>typescript</code> workspace:</p>
+<pre><code class="language-sh">pnpm install
+pnpm --filter @bkey/captcha dev
+pnpm --filter @bkey/captcha test:e2e
+</code></pre>
+<p>The demo opens at <code>http://127.0.0.1:4173</code>. E2E tests run the compiled SDK in desktop
+Chromium and mobile WebKit. They exercise both package entry points, real QR
+encoding, callbacks, forms, age conditions, cancellation, expiry and failures.
+Repeatable artifacts are in <code>playwright-report/</code> and <code>test-results/</code>, including
+screenshots, JSON results and browser traces. See <code>E2E-PLAN.md</code> for failure cases.</p>
+</main></body></html>
