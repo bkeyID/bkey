@@ -35,7 +35,6 @@ export function createBackendTransport(apiUrl: string): Transport {
       session = undefined;
       const body = await request('', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sitekey }), signal });
       const parsed = parseCaptchaRequest(body);
-      if (parsed.mode !== 'human') throw new CaptchaProtocolError('The backend connection currently supports human checks only.');
       if (!/^[0-9a-f-]{36}$/i.test(parsed.requestId) || typeof body.pollToken !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(body.pollToken)) {
         throw new CaptchaProtocolError('Invalid polling credential.');
       }

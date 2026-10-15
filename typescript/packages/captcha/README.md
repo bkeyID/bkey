@@ -5,8 +5,9 @@ The widget starts at 300 × 65 px, expands to show a QR code, and closes to a
 checkmark after approval. It supports light, dark and automatic themes,
 keyboard controls and reduced motion.
 
-**Status:** The built-in connection supports the backend's human-check flow.
-Age widgets remain available for custom transports and demos, but live age approval is not implemented.
+The built-in connection accepts human, age, and age-of-majority checks returned by
+the backend. The backend decides which checks it supports. Age approval requires
+backend and mobile support; SDK support alone does not enable it.
 The default demo simulates approval. Use `/demo/live.html` to connect to a real backend.
 
 ## Render a check
@@ -36,7 +37,7 @@ const widgetId = bkey.render('#check', {
 
 For another environment, call `bkey.configure({ apiUrl: 'https://dev-api.bkey.id' })`
 before rendering. The URL must be an HTTPS origin; HTTP is allowed for localhost.
-The deployment must enable CAPTCHA requests and human issuance. The sitekey must
+The deployment must enable CAPTCHA requests and approval for the configured check. The sitekey must
 allow the browser hostname, including localhost explicitly for local development.
 Never put a server secret in `sitekey` or browser code.
 

@@ -1,18 +1,18 @@
 import {test,expect} from '@playwright/test';
 const id='12345678-1234-1234-1234-123456789abc';
 const poll='p'.repeat(43);
-async function setup(page, invalid=false) {
+async function setup(page, invalid=false, check={mode:'human'}) {
  await page.goto('/demo/integration-guide.html');
  await page.route('https://api.bkey.id/v1/captcha/requests**',async route=>{
   const req=route.request();
   expect(req.headers().cookie).toBeUndefined();
   if(req.method()==='POST') {
    expect(req.postDataJSON()).toEqual({sitekey:'test-sitekey'});
-   await route.fulfill({json:{mode:'human',requestId:id,qrPayload:`https://bkey.id/verify?request_id=${id}`,expiresAt:new Date(Date.now()+60000).toISOString(),pollToken:invalid?'bad':poll}});
+   await route.fulfill({json:{...check,requestId:id,qrPayload:`https://bkey.id/verify?request_id=${id}`,expiresAt:new Date(Date.now()+60000).toISOString(),pollToken:invalid?'bad':poll}});
   } else {
    expect(req.headers()['x-bkey-poll-token']).toBe(poll);
    expect(req.url()).not.toContain(poll);
-   await route.fulfill({json:{mode:'human',requestId:id,status:'approved',token:'result-token',expiresAt:new Date(Date.now()+60000).toISOString()}});
+   await route.fulfill({json:{...check,requestId:id,status:'approved',token:'result-token',expiresAt:new Date(Date.now()+60000).toISOString()}});
   }
  });
  await page.evaluate(async()=>{
@@ -75,3 +75,32 @@ for (const outcome of ['approve', 'remove', 'expire']) {
   await page.screenshot({path:info.outputPath(`rate-limit-${outcome}.png`)});
  });
 }
+
+// Failure cases: valid age modes must not be blocked; malformed rules and
+// approval conditions that differ from the request must not yield a token.
+for (const check of [
+ {mode:'ageOfMajority'},
+ ...['gte','lte','eq'].map(operator=>({mode:'age',age:{operator,value:18}})),
+ {mode:'age',age:{operator:'range',min:18,max:25}},
+]) {
+ test(`default transport accepts backend check ${check.age?.operator ?? check.mode}`,async({page},info)=>{
+  await setup(page,false,check);
+  await page.getByRole('checkbox').click();
+  await expect.poll(()=>page.evaluate(()=>window.result)).toBe('result-token');
+  await expect(page.locator('.shell')).toHaveAttribute('data-state','verified');
+  await expect(page.getByText(check.mode==='ageOfMajority'?'Adult status verified':'Age verified',{exact:true})).toBeVisible();
+  await page.screenshot({path:info.outputPath('backend-age-success.png')});
+ });
+}
+test('default transport rejects malformed backend age rules',async({page})=>{
+ await setup(page,false,{mode:'age',age:{operator:'range',min:25,max:18}});
+ await expect(page.locator('.shell')).toHaveAttribute('data-state','error');
+ expect(await page.evaluate(()=>window.sdk.getResponse())).toBe('');
+});
+test('default transport rejects an approval with different age conditions',async({page})=>{
+ await setup(page,false,{mode:'age',age:{operator:'gte',value:18}});
+ await page.route('https://api.bkey.id/v1/captcha/requests/*/status',route=>route.fulfill({json:{mode:'human',requestId:id,status:'approved',token:'wrong-check',expiresAt:new Date(Date.now()+60000).toISOString()}}));
+ await page.getByRole('checkbox').click();
+ await expect(page.locator('.shell')).toHaveAttribute('data-state','error');
+ expect(await page.evaluate(()=>window.sdk.getResponse())).toBe('');
+});
