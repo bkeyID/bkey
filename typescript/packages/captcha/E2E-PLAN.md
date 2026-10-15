@@ -53,6 +53,7 @@ Tests use simulated service policies keyed by sitekey. This verifies the SDK onl
 not backend enforcement or resistance to a modified browser.
 
 ## Built-in backend connection
+
 Before implementation: verify create/status wire fields, automatic Origin, no cookies,
 poll token confined to its header, multiple widgets, reset/removal, malformed poll token,
 mismatched status, network failure, and unsupported action/cData. Use Playwright route
