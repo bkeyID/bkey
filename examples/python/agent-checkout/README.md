@@ -29,7 +29,7 @@ Create a `.env` file next to `pyproject.toml` (copy from `.env.example`) and fil
 | Variable | Where to get it |
 |---|---|
 | `BKEY_CLIENT_ID` / `BKEY_CLIENT_SECRET` | Register an **agent client** at [bkey.id](https://bkey.id) (agent clients use the `client_credentials` grant). |
-| `BKEY_API_URL` | Defaults to `https://api.bkey.id`. Override for staging or a local dev API. |
+| `BKEY_API_URL` | Defaults to `https://api.bkey.id`. Keep this default when developing your app locally. |
 
 Then source the env and run the CLI:
 

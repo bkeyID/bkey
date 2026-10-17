@@ -1,7 +1,6 @@
 // One-time self-serve registration (RFC 7591) — prints your .env values.
 // Usage: APP_URL=http://localhost:3000 npm run register
-// Override the environment with BKEY_ISSUER=https://staging-api.bkey.id if you
-// are testing against staging with a staging-enrolled device.
+// Uses the public login issuer by default, including for localhost websites.
 import { randomUUID } from 'node:crypto';
 import { registerClient } from '@bkey/login';
 

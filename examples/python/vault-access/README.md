@@ -32,7 +32,7 @@ Create a `.env` file next to `pyproject.toml` (copy from `.env.example`) and fil
 | Variable | Where to get it |
 |---|---|
 | `BKEY_CLIENT_ID` / `BKEY_CLIENT_SECRET` | Register a client at [bkey.id](https://bkey.id). |
-| `BKEY_API_URL` | Defaults to `https://api.bkey.id`. Override for staging or local dev. |
+| `BKEY_API_URL` | Defaults to `https://api.bkey.id`. Keep this default when developing your app locally. |
 
 Then source the env and run:
 
