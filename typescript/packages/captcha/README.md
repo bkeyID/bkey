@@ -35,8 +35,8 @@ const widgetId = bkey.render('#check', {
 });
 ```
 
-For another environment, call `bkey.configure({ apiUrl: 'https://dev-api.bkey.id' })`
-before rendering. The URL must be an HTTPS origin; HTTP is allowed for localhost.
+The SDK uses `https://api.bkey.id` by default. No API URL configuration is needed,
+including when testing your website on localhost.
 The deployment must enable CAPTCHA requests and approval for the configured check. The sitekey must
 allow the browser hostname, including localhost explicitly for local development.
 Never put a server secret in `sitekey` or browser code.

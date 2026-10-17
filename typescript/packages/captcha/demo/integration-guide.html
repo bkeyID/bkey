@@ -28,7 +28,7 @@ const widgetId = bkey.render(&#39;#check&#39;, {
   &#39;expired-callback&#39;: () =&gt; console.log(&#39;Start again&#39;),
 });
 </code></pre>
-<p>Use <code>bkey.configure({ apiUrl: 'https://dev-api.bkey.id' })</code> before rendering to select another deployment. The sitekey must allow the browser hostname. Keep all server secrets out of browser code.</p>
+<p>The SDK uses <code>https://api.bkey.id</code> by default. No API URL configuration is needed, including when testing your website on localhost. The sitekey must allow the browser hostname, including localhost explicitly for local development. Keep all server secrets out of browser code.</p>
 <p>The SDK creates a request with the sitekey, uses its QR link unchanged, and polls with the private <code>X-Bkey-Poll-Token</code> header. Polling credentials stay in memory and are cleared on completion, failure, reset, or removal. Cookies are omitted.</p>
 <p>Your server must send <code>{ sitekey, clientId, clientSecret, response }</code> to <code>POST /v1/captcha/siteverify</code>, require success, and check the returned hostname before granting access. Each result can be consumed once.</p>
 <p><code>action</code> and <code>cData</code> are supported only by custom transports until the backend supports them.</p>
