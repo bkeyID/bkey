@@ -39,3 +39,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Browser test artifacts
+playwright-report/
+test-results/

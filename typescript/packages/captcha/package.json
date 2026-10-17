@@ -1,0 +1,48 @@
+{
+  "name": "@bkey/captcha",
+  "version": "0.1.0",
+  "description": "Bkey CAPTCHA browser SDK with human and age checks",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./api.js": "./dist/api.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./dist/api.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "dev": "pnpm build && node demo/server.mjs",
+    "test": "playwright test",
+    "test:e2e": "pnpm build && playwright test"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/qrcode": "^1.5.5",
+    "esbuild": "^0.25.12",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bkeyID/bkey.git",
+    "directory": "typescript/packages/captcha"
+  },
+  "license": "Apache-2.0"
+}

@@ -37,6 +37,7 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/captcha",
               "guides/x402-payments",
               "guides/encryption",
               "guides/agent-checkout",

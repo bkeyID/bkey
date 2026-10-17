@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "outDir": "dist",
+    "rootDir": "src",
+    "declarationMap": true
+  },
+  "include": ["src/**/*.ts"]
+}
