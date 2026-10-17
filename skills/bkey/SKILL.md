@@ -325,7 +325,7 @@ bkey clients revoke <client_id> --yes --json         # only when the user asks; 
    bkey wrap --env BKEY_CLIENT_SECRET="{vault:<app> (<env>) · Login with bkey}" -- npm run dev
    ```
    or put `BKEY_CLIENT_ID` in the app's env and let the deployment read the secret through the vault.
-4. Wire the app: `npm install @bkey/login`, then in Auth.js `BkeyProvider({ clientId, clientSecret })` (see `docs/sdk/login`). Use the default public issuer, `https://id.bkey.id`, including for localhost websites.
+4. Wire the app: `npm install @bkey/login`, then in Auth.js `BkeyProvider({ clientId, clientSecret })` (see `docs/sdk/login`). The issuer defaults to production; pass `issuer: 'https://staging-api.bkey.id'` when the client was created against staging (`BKEY_BASE_URL`).
 5. Verify with `bkey clients analytics <client_id> --json` after the first sign-in.
 
 If `create` prints `vault_error`, the secret was **not** stored (the user declined or the phone has no vault key) — tell the user, and do not retry silently. Never run `rotate-secret` or `revoke` unless the user explicitly asked for that specific client; a rotation that times out may still have completed on the server.

@@ -21,8 +21,9 @@ npm run register
 npm run dev   # http://localhost:3000 → "Sign in with bkey"
 ```
 
-This uses the public login issuer, `https://id.bkey.id`, with the bkey app from
-the App Store. Keep that default when testing your website on localhost.
+This registers against production (`https://id.bkey.id`), which is what the App Store
+app is enrolled in. To use staging instead, prefix **both** commands with
+`BKEY_ISSUER=https://staging-api.bkey.id` — that needs a staging-enrolled device.
 
 The full integration is [`auth.ts`](./auth.ts) — `BkeyProvider` + your
 credentials. Auth.js handles discovery, PKCE, nonce, and EdDSA id_token
@@ -38,8 +39,9 @@ face → you're back, signed in. No password exists anywhere in this flow.
 
 - bkey shares exactly one claim: `sub` (a pseudonymous DID). Collect
   name/email in your own onboarding if you need them.
-- Register and sign in against the **same** public issuer, `https://id.bkey.id`.
-- Use `id.bkey.id` verbatim as the issuer. `auth.bkey.id`
+- Register and sign in against the **same** issuer — a client registered on
+  production is unknown to staging, and vice versa.
+- Use `id.bkey.id` (or `staging-api.bkey.id`) verbatim as the issuer. `auth.bkey.id`
   answers discovery too, but the document it returns declares
   `"issuer": "https://id.bkey.id"`, so pointing a client at it fails the mandatory
   OIDC issuer-equality check (`issuer_mismatch`).

@@ -128,11 +128,14 @@ answer OIDC discovery, but the document they return declares
 issuer to equal the one you configured, so pointing a client at either alias
 fails with `issuer_mismatch` before the first redirect.
 
-Register and authenticate against the **same** public issuer, `https://id.bkey.id`,
-including when your website runs on localhost.
+Register and authenticate against the **same** issuer. A client registered on
+production is unknown to staging, and vice versa.
 </Warning>
 
-Use the bkey app from the App Store to approve sign-in requests.
+| Environment | Issuer | Approve with |
+| --- | --- | --- |
+| Production | `https://id.bkey.id` | the bkey app from the App Store |
+| Staging | `https://staging-api.bkey.id` | a staging-enrolled device |
 
 ## Next.js — the five-line version
 

@@ -243,13 +243,18 @@ and approves with their face. No password ever exists.
 The id_token carries exactly one identity claim: `sub`, a pseudonymous DID.
 Name/email are **not** shared — render your own profile UX on first login.
 
-## Public login issuer
+## Environments
 
-Use the default issuer, `https://id.bkey.id`, with the bkey app from the App Store.
-This also applies when your website runs on localhost. No issuer override is needed.
-Register and authenticate against the same issuer.
+| Environment | Issuer | Approve with |
+| --- | --- | --- |
+| Production (default) | `https://id.bkey.id` | the bkey app from the App Store |
+| Staging | `https://staging-api.bkey.id` | a staging-enrolled device |
 
-> Use `https://id.bkey.id` verbatim. `auth.bkey.id` also answers discovery, but the
+Register and authenticate against the **same** issuer — a client registered on one
+is unknown to the other. Pass `issuer` explicitly (or set `BKEY_ISSUER`) for staging;
+production is the default.
+
+> Use the issuer hosts above verbatim. `auth.bkey.id` also answers discovery, but the
 > document it returns declares `"issuer": "https://id.bkey.id"` — so configuring
 > `auth.bkey.id` fails the mandatory OIDC issuer-equality check (`issuer_mismatch`)
 > before sign-in can start.

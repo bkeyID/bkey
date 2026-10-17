@@ -11,7 +11,7 @@ export interface BkeyDiscovery {
 }
 
 export interface RegisterClientOptions {
-  /** bkey issuer base: `https://id.bkey.id` (public default, including for localhost websites). */
+  /** bkey issuer base: `https://id.bkey.id` (or `https://staging-api.bkey.id`). */
   issuer: string;
   /** Where bkey may redirect back to after sign-in. */
   redirectUris: string[];
@@ -149,7 +149,7 @@ export interface ClaimRegisteredClientOptions {
 }
 
 export interface BkeyLoginConfig {
-  /** bkey issuer base: `https://id.bkey.id` (public default, including for localhost websites). */
+  /** bkey issuer base: `https://id.bkey.id` (or `https://staging-api.bkey.id`). */
   issuer: string;
   clientId: string;
   /** Omit for public (PKCE-only) clients. */

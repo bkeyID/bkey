@@ -102,7 +102,7 @@ First release. `npm install @bkey/login`.
   Confidential registrations must also include the issued client secret and
   its expiry. Other metadata remains optional, and malformed fields are
   rejected instead of coerced.
-- **Quickstart defaults to production** (`https://id.bkey.id`) instead of `staging-api.bkey.id`. Login with bkey is enabled in production, and the App Store build of the bkey app is enrolled there — so the documented path now works with the app a developer already has. The quickstart documents the public issuer and the `auth.bkey.id` pitfall.
+- **Quickstart defaults to production** (`https://id.bkey.id`) instead of `staging-api.bkey.id`. Login with bkey is enabled in production, and the App Store build of the bkey app is enrolled there — so the documented path now works with the app a developer already has. Staging remains available via `BKEY_ISSUER`, and both READMEs document the environment/issuer table plus the `auth.bkey.id` pitfall.
 
 ---
 
