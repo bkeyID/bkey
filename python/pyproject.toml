@@ -42,8 +42,8 @@ all = ["bkey-sdk[async,mcp,fastapi]"]
 # a `run:` string is invisible to every dependency updater. PEP 735 groups are not
 # published in the wheel, so this does not affect installers of bkey-sdk.
 ci = [
-    "ruff==0.16.9",
-    "pytest==9.1.1",
+    "ruff==0.17.3",
+    "pytest==9.2.0",
 ]
 
 [project.urls]
