@@ -43,7 +43,7 @@ jobs:
       - run: pnpm test
       - name: Save CAPTCHA browser test artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: captcha-browser-tests-node-${{ matrix.node-version }}
           path: |
