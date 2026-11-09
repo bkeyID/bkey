@@ -33,7 +33,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.1",
+    "@playwright/test": "^1.65.0",
     "@types/qrcode": "^1.5.5",
     "esbuild": "^0.25.12",
     "jsqr": "^1.4.0",
