@@ -40,9 +40,10 @@ function decodeTerminalQr(output) {
 }
 
 const scenarios = [
-  { api: 'https://api.bkey.id', scheme: 'bkeyid' },
-  { api: 'https://staging-api.bkey.id', scheme: 'bkeyid-beta', fromEnv: true },
-  { api: 'https://dev-api.bkey.id', scheme: 'bkeyid-dev' },
+  { api: 'https://api.bkey.id', mobileHost: 'bkey.id' },
+  { api: 'https://id.bkey.id', mobileHost: 'bkey.id' },
+  { api: 'https://staging-api.bkey.id', mobileHost: 'staging.bkey.id', fromEnv: true },
+  { api: 'https://dev-api.bkey.id', mobileHost: 'dev.bkey.id' },
   { api: 'https://self-hosted.example' },
   { api: 'https://api.bkey.id.example' },
   { api: 'https://api.bkey.id:8443' },
@@ -50,7 +51,7 @@ const scenarios = [
 ];
 
 const results = [];
-for (const { api, scheme, fromEnv, loopback } of scenarios) {
+for (const { api, mobileHost, fromEnv, loopback } of scenarios) {
   const args = ['--import', preload, cli, 'auth', 'login'];
   if (!fromEnv) args.push('--base-url', api);
   const result = spawnSync(process.execPath, args, {
@@ -81,11 +82,11 @@ for (const { api, scheme, fromEnv, loopback } of scenarios) {
   assert.equal(new URL(browserUrl).searchParams.get('user_code'), userCode);
 
   const decodedQr = decodeTerminalQr(result.stdout);
-  if (scheme) {
+  if (mobileHost) {
     assert.ok(decodedQr, `${api} should print an app QR`);
     const link = new URL(decodedQr);
-    assert.equal(link.protocol, `${scheme}:`, api);
-    assert.equal(link.hostname, 'device-approve', api);
+    assert.equal(link.origin, `https://${mobileHost}`, api);
+    assert.equal(link.pathname, '/device-approve', api);
     assert.deepEqual([...link.searchParams], [['user_code', userCode]], api);
   } else {
     assert.equal(decodedQr, null, `${api} must not print an app QR`);

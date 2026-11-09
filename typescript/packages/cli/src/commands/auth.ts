@@ -24,10 +24,12 @@ import { pollDeviceAuth } from '../lib/device-auth-poll.js';
 export const authCommand = new Command('auth')
   .description('Manage BKey CLI authentication');
 
-const deviceApprovalSchemes = new Map([
-  ['https://api.bkey.id', 'bkeyid'],
-  ['https://staging-api.bkey.id', 'bkeyid-beta'],
-  ['https://dev-api.bkey.id', 'bkeyid-dev'],
+// Match the HTTPS targets used by the backend's /device page.
+const deviceApprovalOrigins = new Map([
+  ['https://api.bkey.id', 'https://bkey.id'],
+  ['https://id.bkey.id', 'https://bkey.id'],
+  ['https://staging-api.bkey.id', 'https://staging.bkey.id'],
+  ['https://dev-api.bkey.id', 'https://dev.bkey.id'],
 ]);
 
 /**
@@ -137,26 +139,24 @@ authCommand
     console.log('└─────────────────────────────────────────┘');
 
     const backendUrl = URL.parse(apiUrl);
-    const scheme = backendUrl?.pathname === '/' && !backendUrl.search && !backendUrl.hash
+    const approvalOrigin = backendUrl?.pathname === '/' && !backendUrl.search && !backendUrl.hash
       && !backendUrl.username && !backendUrl.password
-      ? deviceApprovalSchemes.get(backendUrl.origin)
+      ? deviceApprovalOrigins.get(backendUrl.origin)
       : undefined;
-    if (scheme) {
+    if (approvalOrigin) {
       try {
         const QRCode = await import('qrcode');
-        const deepLink = `${scheme}://device-approve?user_code=${encodedUserCode}`;
-        const qrText = await QRCode.toString(deepLink, {
+        const approvalUrl = `${approvalOrigin}/device-approve?user_code=${encodedUserCode}`;
+        const qrText = await QRCode.toString(approvalUrl, {
           type: 'utf8',
           errorCorrectionLevel: 'L',
           margin: 4,
         });
         console.log('\n' + qrText);
-        console.log('  Scan to open in the BKey app on your phone\n');
+        console.log('  Scan with your phone. If the app does not open, use the verification URL above.\n');
       } catch {
         // Browser approval remains available if QR rendering fails.
       }
-    } else {
-      console.log('Use the verification URL above to approve on this backend.');
     }
 
     try {
