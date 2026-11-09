@@ -38,6 +38,16 @@ jobs:
       # bump can raise the real floor again with nothing going red.
       - run: node scripts/check-engines.mjs
       - run: pnpm build
+      - name: Verify CLI device approval QR codes
+        run: |
+          mkdir -p test-results
+          pnpm --silent test:cli-device-auth > test-results/cli-device-auth.json
+      - name: Save CLI device approval results
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-device-auth-node-${{ matrix.node-version }}
+          path: typescript/test-results/cli-device-auth.json
+          if-no-files-found: error
       - name: Install CAPTCHA test browsers
         run: pnpm --filter @bkey/captcha exec playwright install --with-deps chromium webkit
       - run: pnpm test

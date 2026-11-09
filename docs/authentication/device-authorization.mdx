@@ -30,6 +30,8 @@ The CLI prints a short user code and a verification URL, opens the URL in your b
 2. Confirm the user code matches.
 3. Approve with facial biometrics.
 
+For the hosted production, staging, and development APIs, the CLI also prints a QR code that opens the matching BKey app. For a custom API URL, including a local server, use the printed verification URL.
+
 The CLI unblocks the moment the phone completes approval and saves the session as a human profile in `~/.bkey/profiles.json` (default identifier: `default`). Subsequent `bkey …` commands use it automatically. Multiple profiles can coexist — pass `bkey auth login --profile work` to save under a different name, then select with `bkey <cmd> --profile work` or `BKEY_PROFILE=work bkey <cmd>`.
 
 ### Flow at the protocol level
