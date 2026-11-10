@@ -8,9 +8,11 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:scripts": "node --test scripts/lib/*.test.mjs",
+    "test:cli-device-auth": "node scripts/cli-device-auth-e2e.mjs",
     "clean": "turbo run clean"
   },
   "devDependencies": {
+    "jsqr": "^1.4.0",
     "turbo": "^2.11.10",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"

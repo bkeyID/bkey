@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      jsqr:
+        specifier: ^1.4.0
+        version: 1.4.0
       turbo:
         specifier: ^2.11.10
         version: 2.11.10

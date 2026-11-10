@@ -24,6 +24,14 @@ import { pollDeviceAuth } from '../lib/device-auth-poll.js';
 export const authCommand = new Command('auth')
   .description('Manage BKey CLI authentication');
 
+// Match the HTTPS targets used by the backend's /device page.
+const deviceApprovalOrigins = new Map([
+  ['https://api.bkey.id', 'https://bkey.id'],
+  ['https://id.bkey.id', 'https://bkey.id'],
+  ['https://staging-api.bkey.id', 'https://staging.bkey.id'],
+  ['https://dev-api.bkey.id', 'https://dev.bkey.id'],
+]);
+
 /**
  * True when the API URL points at a loopback host that is expected to
  * self-serve the `/device` approval page (local dev). For any other host
@@ -107,6 +115,7 @@ authCommand
     }
 
     const userCode = initJson.user_code as string;
+    const encodedUserCode = encodeURIComponent(userCode);
     // For split-deployment (prod + most self-hosted) the API URL and the
     // browser-facing verification URL are on different hosts — trust what the
     // authorization server returned per RFC 8628 §3.2. Only rewrite when the
@@ -117,8 +126,8 @@ authCommand
       ? `${apiUrl}/device`
       : (initJson.verification_uri as string);
     const verificationUriComplete = rewriteForLocalDev
-      ? `${apiUrl}/device?user_code=${userCode}`
-      : (initJson.verification_uri_complete as string) ?? `${verificationUri}?user_code=${userCode}`;
+      ? `${apiUrl}/device?user_code=${encodedUserCode}`
+      : (initJson.verification_uri_complete as string) ?? `${verificationUri}?user_code=${encodedUserCode}`;
     const deviceCode = initJson.device_code as string;
     const interval = initJson.interval as number;
     const expiresIn = initJson.expires_in as number;
@@ -127,21 +136,27 @@ authCommand
     console.log(`│  Your code:  ${userCode}                │`);
     console.log('├─────────────────────────────────────────┤');
     console.log(`│  Open: ${verificationUriComplete}`);
-    console.log(`│  Or approve in the BKey app on your phone`);
     console.log('└─────────────────────────────────────────┘');
 
-    try {
-      const QRCode = await import('qrcode');
-      const deepLink = `bkeyid://device-approve?user_code=${userCode}`;
-      const qrText = await QRCode.toString(deepLink, {
-        type: 'utf8',
-        errorCorrectionLevel: 'L',
-        margin: 1,
-      });
-      console.log('\n' + qrText);
-      console.log('  Scan to open on your phone\n');
-    } catch {
-      // QR generation is non-critical; skip silently
+    const backendUrl = URL.parse(apiUrl);
+    const approvalOrigin = backendUrl?.pathname === '/' && !backendUrl.search && !backendUrl.hash
+      && !backendUrl.username && !backendUrl.password
+      ? deviceApprovalOrigins.get(backendUrl.origin)
+      : undefined;
+    if (approvalOrigin) {
+      try {
+        const QRCode = await import('qrcode');
+        const approvalUrl = `${approvalOrigin}/device-approve?user_code=${encodedUserCode}`;
+        const qrText = await QRCode.toString(approvalUrl, {
+          type: 'utf8',
+          errorCorrectionLevel: 'L',
+          margin: 4,
+        });
+        console.log('\n' + qrText);
+        console.log('  Scan with your phone. If the app does not open, use the verification URL above.\n');
+      } catch {
+        // Browser approval remains available if QR rendering fails.
+      }
     }
 
     try {
