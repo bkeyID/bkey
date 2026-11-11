@@ -77,14 +77,14 @@ Everything the [bkey.id/developers](https://bkey.id/developers) dashboard does f
 ```bash
 # Register a confidential client for your app. The secret prints once AND is
 # sent end-to-end encrypted to your phone's vault (one approval on the phone).
-bkey clients create --name "Brain15 (dev)"   --redirect-uri https://dev.brain15.example/api/auth/callback/bkey   --post-logout-redirect-uri https://dev.brain15.example/
+bkey clients create --name "BShield Brain (dev)"   --redirect-uri https://dev.bshield-brain.example/api/auth/callback/bkey   --post-logout-redirect-uri https://dev.bshield-brain.example/
 
 # Use the secret later without it ever appearing in a transcript:
-bkey wrap --env BKEY_CLIENT_SECRET="{vault:Brain15 (dev) · Login with bkey}" -- npm run dev
+bkey wrap --env BKEY_CLIENT_SECRET="{vault:BShield Brain (dev) · Login with bkey}" -- npm run dev
 
 bkey clients list
 bkey clients analytics bkey_client_xxx
-bkey clients update bkey_client_xxx --redirect-uri https://dev.brain15.example/api/auth/callback/bkey https://brain15.example/api/auth/callback/bkey
+bkey clients update bkey_client_xxx --redirect-uri https://dev.bshield-brain.example/api/auth/callback/bkey https://bshield-brain.example/api/auth/callback/bkey
 bkey clients rotate-secret bkey_client_xxx --grace-hours 24
 bkey clients revoke bkey_client_xxx --yes
 ```
