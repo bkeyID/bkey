@@ -15,7 +15,7 @@
     "jsqr": "^1.4.0",
     "turbo": "^2.11.11",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   },
   "packageManager": "pnpm@9.15.0"
 }
